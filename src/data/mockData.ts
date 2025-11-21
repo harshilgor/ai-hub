@@ -13,6 +13,8 @@ export interface Startup {
   batch?: string;
   founders?: string[];
   teamSize?: number;
+  fundingRationale?: string;
+  technologyTrend?: string;
 }
 
 export interface Paper {
@@ -34,6 +36,51 @@ export interface Investor {
   logo: string;
   deals: number;
   totalInvested: string;
+}
+
+export interface IndustryInsight {
+  id: string;
+  title: string;
+  description: string;
+  event: string;
+  explanation: string;
+  date: string;
+  relatedCompanies: string[];
+  relatedInvestors: string[];
+  relatedPapers: string[];
+  relatedNews: string[];
+  connections: {
+    type: 'paper' | 'news' | 'insider' | 'company' | 'investor';
+    id: string;
+    label: string;
+    description: string;
+  }[];
+  category: string;
+  impact: 'high' | 'medium' | 'low';
+}
+
+export interface NewsItem {
+  id: string;
+  title: string;
+  source: string;
+  date: string;
+  summary: string;
+  link: string;
+  relatedCompanies: string[];
+  relatedInvestors: string[];
+}
+
+export interface TechnologyTrend {
+  id: string;
+  name: string;
+  description: string;
+  growthRate: number;
+  fundingAmount: string;
+  dealCount: number;
+  keyPlayers: string[];
+  researchPapers: string[];
+  whyHot: string;
+  nextBigThing: boolean;
 }
 
 export const aiCategories = [
@@ -66,6 +113,8 @@ export const mockStartups: Startup[] = [
     batch: 'W24',
     founders: ['Dr. Sarah Chen', 'Michael Rodriguez'],
     teamSize: 23,
+    fundingRationale: 'Breakthrough in multimodal medical imaging with 95% accuracy in early disease detection. Recent research papers show significant improvements in parameter-efficient fine-tuning, making this technology scalable. Healthcare AI sector seeing 45% growth with massive hospital adoption.',
+    technologyTrend: 'Multimodal Healthcare AI',
   },
   {
     id: '2',
@@ -82,6 +131,8 @@ export const mockStartups: Startup[] = [
     batch: 'S23',
     founders: ['Alex Kim', 'Jordan Lee'],
     teamSize: 12,
+    fundingRationale: 'AI agents category experiencing 52% growth. Recent ICML paper on autonomous code generation with RL shows breakthrough potential. a16z betting heavily on agent infrastructure as the next platform shift.',
+    technologyTrend: 'Autonomous AI Agents',
   },
   {
     id: '3',
@@ -97,6 +148,8 @@ export const mockStartups: Startup[] = [
     website: 'https://visionguard.ai',
     founders: ['Emma Watson', 'David Park'],
     teamSize: 45,
+    fundingRationale: 'Real-time anomaly detection breakthrough with <50ms latency. CVPR 2025 paper validates approach. Security AI market expanding rapidly with enterprise demand for real-time threat detection.',
+    technologyTrend: 'Real-Time Computer Vision',
   },
   {
     id: '4',
@@ -113,6 +166,8 @@ export const mockStartups: Startup[] = [
     batch: 'W23',
     founders: ['Lisa Johnson', 'Ryan Martinez'],
     teamSize: 18,
+    fundingRationale: 'Voice AI market exploding with content creator demand. Multimodal models enabling realistic voice synthesis. Creative tools sector seeing massive adoption from media companies.',
+    technologyTrend: 'Voice Synthesis & Cloning',
   },
   {
     id: '5',
@@ -128,6 +183,8 @@ export const mockStartups: Startup[] = [
     website: 'https://robochef.ai',
     founders: ['James Chen', 'Maria Garcia'],
     teamSize: 120,
+    fundingRationale: 'Robotics sector seeing 200% demand increase in commercial automation. SoftBank doubling down on humanoid and commercial robots. Series C indicates strong product-market fit and scaling opportunity.',
+    technologyTrend: 'Commercial Robotics & Automation',
   },
   {
     id: '6',
@@ -144,6 +201,8 @@ export const mockStartups: Startup[] = [
     batch: 'S24',
     founders: ['Robert Chang', 'Sophia Williams'],
     teamSize: 15,
+    fundingRationale: 'LLM applications in finance showing strong ROI. Recent research on financial reasoning with LLMs demonstrates superior performance. Fintech AI sector growing 32% with institutional adoption.',
+    technologyTrend: 'Financial LLMs & AI Trading',
   },
   {
     id: '7',
@@ -160,6 +219,8 @@ export const mockStartups: Startup[] = [
     batch: 'W24',
     founders: ['Kevin Patel', 'Anna Schmidt'],
     teamSize: 28,
+    fundingRationale: 'AI agents for personalized education showing 3x better learning outcomes. EdTech sector embracing AI tutors. Research on adaptive learning systems validates approach.',
+    technologyTrend: 'AI-Powered Personalized Education',
   },
   {
     id: '8',
@@ -175,6 +236,8 @@ export const mockStartups: Startup[] = [
     website: 'https://pixelforge.ai',
     founders: ['Maya Anderson', 'Chris Taylor'],
     teamSize: 52,
+    fundingRationale: 'Multimodal generation models advancing rapidly. Recent papers on chain-of-thought reasoning improving quality. Creative professionals adopting AI tools at unprecedented rate.',
+    technologyTrend: 'Multimodal Content Generation',
   },
 ];
 
@@ -225,6 +288,18 @@ export const mockPapers: Paper[] = [
     tags: ['Computer Vision', 'Security', 'Real-Time'],
     relatedStartups: ['3'],
     citations: 67,
+    link: 'https://arxiv.org/abs/2025.xxxxx',
+  },
+  {
+    id: '5',
+    title: 'Efficient AI Inference Architectures: 10x Improvements in Model Efficiency',
+    authors: ['Zhang, Li, et al.'],
+    venue: 'NeurIPS 2025',
+    date: '1 week ago',
+    summary: 'Novel architecture designs achieving 10x efficiency improvements in AI model inference, reducing computational requirements and energy consumption.',
+    tags: ['Infrastructure', 'Efficiency', 'Inference'],
+    relatedStartups: [],
+    citations: 124,
     link: 'https://arxiv.org/abs/2025.xxxxx',
   },
 ];
@@ -307,4 +382,223 @@ export const industryData = {
     topStartups: mockStartups.filter(s => s.category.includes('Robotics')),
   },
 };
+
+export const industryInsights: IndustryInsight[] = [
+  {
+    id: '1',
+    title: 'Michael Burry\'s Nvidia Short',
+    event: 'Michael Burry (Scion Asset Management) disclosed a significant short position against Nvidia',
+    description: 'The "Big Short" investor is betting against the AI chip giant, citing valuation concerns and potential market saturation.',
+    explanation: 'Burry\'s move comes as Nvidia trades at 40x revenue. Research papers suggest AI chip demand may plateau as models become more efficient. Founders Fund\'s subsequent exit suggests smart money is rotating out of pure-play AI infrastructure.',
+    date: '3 days ago',
+    relatedCompanies: ['Nvidia'],
+    relatedInvestors: ['Scion Asset Management', 'Founders Fund'],
+    relatedPapers: ['5'],
+    relatedNews: ['1', '2'],
+    connections: [
+      {
+        type: 'investor',
+        id: 'founders-fund',
+        label: 'Founders Fund',
+        description: 'Dropped all Nvidia shares following Burry\'s disclosure',
+      },
+      {
+        type: 'paper',
+        id: '5',
+        label: 'Efficient AI Inference Architectures',
+        description: 'Research showing 10x efficiency improvements in model inference',
+      },
+      {
+        type: 'news',
+        id: '1',
+        label: 'Nvidia Valuation Concerns',
+        description: 'Analysts question sustainability of current valuation',
+      },
+    ],
+    category: 'Semiconductors',
+    impact: 'high',
+  },
+  {
+    id: '2',
+    title: 'Founders Fund Exits Nvidia',
+    event: 'Peter Thiel\'s Founders Fund sold all Nvidia positions worth $200M',
+    description: 'The prominent VC fund completely exited its Nvidia holdings, signaling a shift in AI infrastructure investment strategy.',
+    explanation: 'This follows Michael Burry\'s short position. Founders Fund is known for early AI bets but may be rotating into application-layer companies. Insider sources suggest they\'re doubling down on AI agents and vertical AI solutions.',
+    date: '1 day ago',
+    relatedCompanies: ['Nvidia'],
+    relatedInvestors: ['Founders Fund'],
+    relatedPapers: ['5'],
+    relatedNews: ['2'],
+    connections: [
+      {
+        type: 'insider',
+        id: 'ff-strategy',
+        label: 'Founders Fund Strategy Shift',
+        description: 'Moving from infrastructure to application-layer AI investments',
+      },
+      {
+        type: 'company',
+        id: '2',
+        label: 'CodeWeaver AI',
+        description: 'Agent infrastructure company - likely target for Founders Fund',
+      },
+    ],
+    category: 'Investment Strategy',
+    impact: 'high',
+  },
+  {
+    id: '3',
+    title: 'Multimodal AI Breakthrough',
+    event: 'New research paper shows 95% accuracy in medical imaging with multimodal models',
+    description: 'Combining visual and textual reasoning in medical diagnosis achieves unprecedented accuracy.',
+    explanation: 'This breakthrough validates the approach taken by companies like NeuralMed. The research connects to recent funding in healthcare AI, showing why investors are bullish on multimodal applications.',
+    date: '2 days ago',
+    relatedCompanies: ['1'],
+    relatedInvestors: ['Sequoia Capital'],
+    relatedPapers: ['1', '2'],
+    relatedNews: ['3'],
+    connections: [
+      {
+        type: 'paper',
+        id: '1',
+        label: 'Multimodal Chain-of-Thought Reasoning',
+        description: 'Key research enabling the breakthrough',
+      },
+      {
+        type: 'company',
+        id: '1',
+        label: 'NeuralMed',
+        description: 'Startup leveraging this research for medical diagnostics',
+      },
+    ],
+    category: 'Healthcare AI',
+    impact: 'high',
+  },
+];
+
+export const newsItems: NewsItem[] = [
+  {
+    id: '1',
+    title: 'Nvidia Valuation Concerns Mount as AI Chip Demand Slows',
+    source: 'TechCrunch',
+    date: '4 days ago',
+    summary: 'Analysts question whether Nvidia can maintain its current valuation as AI model efficiency improvements reduce chip demand.',
+    link: 'https://techcrunch.com/nvidia-valuation',
+    relatedCompanies: ['Nvidia'],
+    relatedInvestors: ['Scion Asset Management'],
+  },
+  {
+    id: '2',
+    title: 'Founders Fund Exits Nvidia: What It Means for AI Investing',
+    source: 'The Information',
+    date: '1 day ago',
+    summary: 'Peter Thiel\'s fund sold all Nvidia positions, signaling a shift from infrastructure to application-layer AI investments.',
+    link: 'https://theinformation.com/founders-fund-nvidia',
+    relatedCompanies: ['Nvidia'],
+    relatedInvestors: ['Founders Fund'],
+  },
+  {
+    id: '3',
+    title: 'Multimodal AI Shows Promise in Medical Diagnosis',
+    source: 'Nature Medicine',
+    date: '2 days ago',
+    summary: 'New research demonstrates 95% accuracy in medical imaging diagnosis using multimodal AI models.',
+    link: 'https://nature.com/multimodal-medical-ai',
+    relatedCompanies: ['1'],
+    relatedInvestors: ['Sequoia Capital'],
+  },
+];
+
+export const technologyTrends: TechnologyTrend[] = [
+  {
+    id: '1',
+    name: 'Autonomous AI Agents',
+    description: 'AI systems that can autonomously plan, execute, and iterate on complex tasks',
+    growthRate: 52,
+    fundingAmount: '$2.1B',
+    dealCount: 35,
+    keyPlayers: ['CodeWeaver AI', 'Anthropic', 'OpenAI'],
+    researchPapers: ['3'],
+    whyHot: 'Recent ICML paper on RL-based code generation shows breakthrough potential. Investors see agents as the next platform shift after LLMs.',
+    nextBigThing: true,
+  },
+  {
+    id: '2',
+    name: 'Multimodal Healthcare AI',
+    description: 'Combining visual, textual, and clinical data for superior medical diagnosis',
+    growthRate: 45,
+    fundingAmount: '$1.8B',
+    dealCount: 28,
+    keyPlayers: ['NeuralMed', 'PathAI', 'Tempus'],
+    researchPapers: ['1', '2'],
+    whyHot: '95% accuracy breakthrough in medical imaging. Massive hospital adoption driving 45% sector growth.',
+    nextBigThing: true,
+  },
+  {
+    id: '3',
+    name: 'Real-Time Computer Vision',
+    description: 'Ultra-low latency vision systems for security, autonomous vehicles, and robotics',
+    growthRate: 38,
+    fundingAmount: '$1.2B',
+    dealCount: 22,
+    keyPlayers: ['VisionGuard', 'Scale AI', 'Waymo'],
+    researchPapers: ['4'],
+    whyHot: 'CVPR 2025 paper shows <50ms latency achievable. Enterprise demand for real-time threat detection exploding.',
+    nextBigThing: false,
+  },
+  {
+    id: '4',
+    name: 'Voice Synthesis & Cloning',
+    description: 'Natural voice generation and cloning for content creation and enterprise applications',
+    growthRate: 42,
+    fundingAmount: '$850M',
+    dealCount: 18,
+    keyPlayers: ['VoiceFlow', 'ElevenLabs', 'Descript'],
+    researchPapers: ['1'],
+    whyHot: 'Multimodal models enabling realistic voice synthesis. Content creator demand driving rapid adoption.',
+    nextBigThing: false,
+  },
+];
+
+export const investorActivity: {
+  investor: string;
+  action: string;
+  target: string;
+  date: string;
+  reasoning: string;
+  impact: 'high' | 'medium' | 'low';
+}[] = [
+  {
+    investor: 'Founders Fund',
+    action: 'Exited all positions',
+    target: 'Nvidia',
+    date: '1 day ago',
+    reasoning: 'Rotating from infrastructure to application-layer AI. Betting on agents and vertical AI solutions.',
+    impact: 'high',
+  },
+  {
+    investor: 'Andreessen Horowitz',
+    action: 'Led $8M seed round',
+    target: 'CodeWeaver AI',
+    date: '5 days ago',
+    reasoning: 'Doubling down on agent infrastructure. Recent research validates autonomous code generation approach.',
+    impact: 'high',
+  },
+  {
+    investor: 'Sequoia Capital',
+    action: 'Led $15M Series A',
+    target: 'NeuralMed',
+    date: '2 days ago',
+    reasoning: 'Multimodal healthcare AI showing 95% accuracy. Massive market opportunity in medical diagnostics.',
+    impact: 'high',
+  },
+  {
+    investor: 'SoftBank Vision',
+    action: 'Led $80M Series C',
+    target: 'RoboChef',
+    date: '2 weeks ago',
+    reasoning: 'Commercial robotics seeing 200% demand increase. Strong product-market fit in food service automation.',
+    impact: 'medium',
+  },
+];
 

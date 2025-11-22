@@ -62,7 +62,7 @@ export default function UseCasesSection() {
   ];
 
   return (
-    <section className="py-20 bg-light-card dark:bg-dark-card">
+    <section className="py-20 bg-gray-50 dark:bg-dark-card">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -71,10 +71,10 @@ export default function UseCasesSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-4">
-            Built for Everyone in AI
+          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-dark-text mb-4">
+            Built for any use case
           </h2>
-          <p className="text-xl text-light-text-secondary dark:text-dark-text-secondary max-w-2xl mx-auto">
+          <p className="text-xl text-gray-600 dark:text-dark-text-secondary max-w-2xl mx-auto">
             Whether you're investing, researching, building, or learning — we've got you covered
           </p>
         </motion.div>
@@ -89,15 +89,15 @@ export default function UseCasesSection() {
               transition={{ duration: 0.6, delay: index * 0.1 }}
               className="group"
             >
-              <div className="h-full bg-light-bg dark:bg-dark-bg rounded-2xl p-8 border border-light-border dark:border-dark-border hover:border-transparent hover:shadow-2xl transition-all">
+              <div className="h-full bg-white dark:bg-dark-bg rounded-2xl p-8 border border-gray-200 dark:border-dark-border hover:shadow-lg transition-all">
                 {/* Icon */}
-                <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${useCase.gradient} flex items-center justify-center text-white mb-6 group-hover:scale-110 transition-transform shadow-lg`}>
+                <div className="w-14 h-14 rounded-xl bg-gray-900 dark:bg-gray-100 flex items-center justify-center text-white dark:text-gray-900 mb-6 group-hover:scale-110 transition-transform">
                   {useCase.icon}
                 </div>
 
                 {/* Title and Description */}
-                <h3 className="text-2xl font-bold mb-2">{useCase.title}</h3>
-                <p className="text-light-text-secondary dark:text-dark-text-secondary mb-6">
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-dark-text mb-2">{useCase.title}</h3>
+                <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
                   {useCase.description}
                 </p>
 
@@ -105,10 +105,10 @@ export default function UseCasesSection() {
                 <ul className="space-y-3">
                   {useCase.benefits.map((benefit, i) => (
                     <li key={i} className="flex items-start gap-3">
-                      <div className={`flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br ${useCase.gradient} flex items-center justify-center mt-0.5`}>
-                        <Check className="w-3 h-3 text-white" />
+                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-gray-900 dark:bg-gray-100 flex items-center justify-center mt-0.5">
+                        <Check className="w-3 h-3 text-white dark:text-gray-900" />
                       </div>
-                      <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                      <span className="text-sm text-gray-600 dark:text-dark-text-secondary">
                         {benefit}
                       </span>
                     </li>

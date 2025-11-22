@@ -3,7 +3,7 @@ import axios from 'axios';
 const SEMANTIC_SCHOLAR_API = 'https://api.semanticscholar.org/graph/v1';
 
 /**
- * Rate limiter for Semantic Scholar API - ensures 1 request per second
+ * Rate limiter for Semantic Scholar API - ensures 1 request per second with retry logic
  */
 class RateLimiter {
   constructor(requestsPerSecond = 1) {
@@ -12,11 +12,27 @@ class RateLimiter {
     this.lastRequestTime = 0;
     this.queue = [];
     this.processing = false;
+    this.consecutiveErrors = 0;
+    this.lastErrorTime = 0;
   }
 
   async waitForNextSlot() {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    // If we've had recent 429 errors, add extra delay
+    if (this.consecutiveErrors > 0) {
+      const timeSinceLastError = now - this.lastErrorTime;
+      if (timeSinceLastError < 60000) { // Within last minute
+        // Add exponential backoff: 2 seconds per consecutive error
+        const extraDelay = Math.min(this.consecutiveErrors * 2000, 10000); // Max 10 seconds
+        await new Promise(resolve => setTimeout(resolve, extraDelay));
+        console.log(`⏳ Rate limiter: Added ${extraDelay}ms delay due to recent 429 errors`);
+      } else {
+        // Reset error count if it's been more than a minute
+        this.consecutiveErrors = 0;
+      }
+    }
     
     if (timeSinceLastRequest < this.minInterval) {
       const waitTime = this.minInterval - timeSinceLastRequest;
@@ -26,9 +42,38 @@ class RateLimiter {
     this.lastRequestTime = Date.now();
   }
 
-  async execute(requestFn) {
-    await this.waitForNextSlot();
-    return await requestFn();
+  async execute(requestFn, retries = 3) {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        await this.waitForNextSlot();
+        const result = await requestFn();
+        // Reset error count on success
+        this.consecutiveErrors = 0;
+        return result;
+      } catch (error) {
+        if (error.response && error.response.status === 429) {
+          // Rate limit exceeded
+          this.consecutiveErrors++;
+          this.lastErrorTime = Date.now();
+          
+          const retryAfter = error.response.headers['retry-after'] 
+            ? parseInt(error.response.headers['retry-after']) * 1000 
+            : (attempt + 1) * 2000; // Exponential backoff: 2s, 4s, 6s
+          
+          if (attempt < retries - 1) {
+            console.log(`⚠️ Rate limit hit (429). Waiting ${retryAfter}ms before retry ${attempt + 1}/${retries}...`);
+            await new Promise(resolve => setTimeout(resolve, retryAfter));
+            continue;
+          } else {
+            console.error(`❌ Rate limit exceeded after ${retries} attempts. Skipping this request.`);
+            throw error;
+          }
+        } else {
+          // Other errors - don't retry
+          throw error;
+        }
+      }
+    }
   }
 }
 
@@ -175,8 +220,12 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
     const targetYear = year || currentYear;
     
     // Search for each AI topic with offset to get different papers
+    // Reduce number of queries to avoid rate limits - use fewer, more targeted queries
+    const queriesToUse = aiQueries.slice(0, 5); // Only use first 5 queries to reduce API calls
     let offset = 0;
-    for (const query of aiQueries) {
+    let successfulQueries = 0;
+    
+    for (const query of queriesToUse) {
       try {
         // Use offset to get different papers each time
         const response = await rateLimiter.execute(async () => {
@@ -184,7 +233,7 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
             params: {
               query: query,
               year: `${targetYear},${targetYear + 1}`, // Current year and next
-              limit: Math.ceil(limit / aiQueries.length) + 20, // Get more to filter by date
+              limit: Math.ceil(limit / queriesToUse.length) + 20, // Get more to filter by date
               offset: offset,
               fields: 'paperId,title,authors,year,abstract,citationCount,influentialCitationCount,venue,externalIds,openAccessPdf,publicationDate,fieldsOfStudy'
             },
@@ -192,7 +241,7 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
               'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
             }
           });
-        });
+        }, 2); // Only 2 retries to avoid long waits
 
         if (response.data && response.data.data) {
           let papers = response.data.data;
@@ -210,15 +259,31 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
           }
           
           allPapers.push(...papers);
+          successfulQueries++;
+          console.log(`✅ Successfully fetched ${papers.length} papers for query: "${query}"`);
         }
       } catch (queryError) {
-        console.error(`⚠️ Error searching for "${query}":`, queryError.message);
-        // Continue with other queries
+        if (queryError.response && queryError.response.status === 429) {
+          console.error(`⚠️ Rate limit (429) for query "${query}". Skipping remaining queries to avoid further rate limits.`);
+          // Stop making more requests if we hit rate limit
+          break;
+        } else {
+          console.error(`⚠️ Error searching for "${query}":`, queryError.message);
+        }
+        // Continue with other queries if it's not a rate limit error
       }
       
       // Increment offset for next query to get different results
       offset += 10;
-      // Rate limiter already handles 1 req/sec, no need for additional delay
+      
+      // Add a small delay between queries even with rate limiter (extra safety)
+      if (successfulQueries < queriesToUse.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms extra buffer
+      }
+    }
+    
+    if (successfulQueries === 0) {
+      console.log('⚠️ No papers fetched from Semantic Scholar due to rate limits. Will rely on arXiv only.');
     }
 
     // Remove duplicates by paperId

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   TrendingUp, 
@@ -8,7 +8,8 @@ import {
   Filter,
   ArrowUpRight,
   Eye,
-  Users
+  Users,
+  Loader2
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -21,22 +22,7 @@ import {
   Tooltip, 
   ResponsiveContainer 
 } from 'recharts';
-
-// Mock data for Research Paper Trends by Field
-const researchPaperData = [
-  { month: 'Jan', NLP: 320, 'Computer Vision': 280, LLMs: 250, Agents: 180, Robotics: 120, 'Healthcare AI': 90 },
-  { month: 'Feb', NLP: 350, 'Computer Vision': 310, LLMs: 280, Agents: 200, Robotics: 140, 'Healthcare AI': 100 },
-  { month: 'Mar', NLP: 380, 'Computer Vision': 340, LLMs: 310, Agents: 220, Robotics: 150, 'Healthcare AI': 120 },
-  { month: 'Apr', NLP: 360, 'Computer Vision': 330, LLMs: 290, Agents: 210, Robotics: 145, 'Healthcare AI': 115 },
-  { month: 'May', NLP: 420, 'Computer Vision': 380, LLMs: 350, Agents: 250, Robotics: 170, 'Healthcare AI': 130 },
-  { month: 'Jun', NLP: 440, 'Computer Vision': 400, LLMs: 370, Agents: 260, Robotics: 180, 'Healthcare AI': 140 },
-  { month: 'Jul', NLP: 480, 'Computer Vision': 430, LLMs: 400, Agents: 280, Robotics: 190, 'Healthcare AI': 150 },
-  { month: 'Aug', NLP: 490, 'Computer Vision': 440, LLMs: 410, Agents: 290, Robotics: 200, 'Healthcare AI': 160 },
-  { month: 'Sep', NLP: 520, 'Computer Vision': 470, LLMs: 440, Agents: 310, Robotics: 210, 'Healthcare AI': 170 },
-  { month: 'Oct', NLP: 550, 'Computer Vision': 500, LLMs: 470, Agents: 330, Robotics: 220, 'Healthcare AI': 180 },
-  { month: 'Nov', NLP: 530, 'Computer Vision': 480, LLMs: 450, Agents: 320, Robotics: 215, 'Healthcare AI': 175 },
-  { month: 'Dec', NLP: 570, 'Computer Vision': 520, LLMs: 490, Agents: 350, Robotics: 230, 'Healthcare AI': 190 },
-];
+import { fetchPaperTrends, fetchPapers, fetchPaperStats, type Paper } from '../services/api';
 
 const fieldColors = {
   'NLP': '#3B82F6',
@@ -47,56 +33,43 @@ const fieldColors = {
   'Healthcare AI': '#EF4444',
 };
 
-const topResearchPapers = [
-  {
-    id: '1',
-    title: 'Transformer Architecture Improvements for Long Context',
-    authors: 'Smith et al.',
-    citations: 1240,
-    date: '2025-11-20',
-    field: 'NLP'
-  },
-  {
-    id: '2',
-    title: 'Self-Supervised Learning for Computer Vision',
-    authors: 'Johnson et al.',
-    citations: 980,
-    date: '2025-11-18',
-    field: 'Computer Vision'
-  },
-  {
-    id: '3',
-    title: 'Reinforcement Learning in Multi-Agent Systems',
-    authors: 'Williams et al.',
-    citations: 756,
-    date: '2025-11-15',
-    field: 'Agents'
-  },
-  {
-    id: '4',
-    title: 'Efficient Fine-Tuning of Large Language Models',
-    authors: 'Brown et al.',
-    citations: 642,
-    date: '2025-11-12',
-    field: 'LLMs'
-  },
-  {
-    id: '5',
-    title: 'Diffusion Models for Medical Imaging',
-    authors: 'Davis et al.',
-    citations: 589,
-    date: '2025-11-10',
-    field: 'Healthcare AI'
-  },
-  {
-    id: '6',
-    title: 'Robotic Manipulation with Foundation Models',
-    authors: 'Miller et al.',
-    citations: 521,
-    date: '2025-11-08',
-    field: 'Robotics'
-  },
-];
+// Helper function to get field from paper tags/title
+function getPaperField(paper: Paper): string {
+  const text = (paper.title + ' ' + (paper.summary || '')).toLowerCase();
+  const tags = (paper.tags || []).map(t => t.toLowerCase());
+  
+  if (tags.some(t => t.includes('nlp') || t.includes('natural language')) ||
+      text.includes('language model') || text.includes('translation') || 
+      text.includes('text processing') || text.includes('bert') || text.includes('gpt')) {
+    return 'NLP';
+  }
+  if (tags.some(t => t.includes('vision') || t.includes('computer vision') || t.includes('cv')) ||
+      text.includes('image') || text.includes('visual') || text.includes('detection') ||
+      text.includes('segmentation') || text.includes('recognition')) {
+    return 'Computer Vision';
+  }
+  if (tags.some(t => t.includes('llm') || t.includes('language model')) ||
+      text.includes('large language model') || text.includes('gpt') || 
+      text.includes('bert') || text.includes('transformer') || text.includes('pretraining')) {
+    return 'LLMs';
+  }
+  if (tags.some(t => t.includes('agent') || t.includes('reinforcement')) ||
+      text.includes('agent') || text.includes('reinforcement learning') ||
+      text.includes('planning') || text.includes('reasoning') || text.includes('decision')) {
+    return 'Agents';
+  }
+  if (tags.some(t => t.includes('robot') || t.includes('robotics')) ||
+      text.includes('robot') || text.includes('autonomous') || 
+      text.includes('manipulation') || text.includes('navigation') || text.includes('control')) {
+    return 'Robotics';
+  }
+  if (tags.some(t => t.includes('health') || t.includes('medical') || t.includes('healthcare')) ||
+      text.includes('medical') || text.includes('health') || text.includes('diagnosis') ||
+      text.includes('clinical') || text.includes('patient') || text.includes('disease') || text.includes('drug')) {
+    return 'Healthcare AI';
+  }
+  return 'Other';
+}
 
 // Mock data for Investment Trends
 const investmentData = [
@@ -175,11 +148,121 @@ const topInvestments = [
 function ResearchPaperTrendsSection() {
   const [dateRange, setDateRange] = useState('12m');
   const [field, setField] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [trendsData, setTrendsData] = useState<any[]>([]);
+  const [topPapers, setTopPapers] = useState<Paper[]>([]);
+  const [metrics, setMetrics] = useState({
+    totalPapers: 0,
+    avgCitations: 0,
+    topField: 'NLP'
+  });
+  const [stats, setStats] = useState<Record<string, number>>({});
+
+  // Map dateRange to period for API
+  const getPeriodForAPI = (range: string) => {
+    switch (range) {
+      case '3m': return '3m';
+      case '6m': return '6m';
+      case '12m': return '12m';
+      case 'all': return 'all';
+      default: return '12m';
+    }
+  };
+
+  // Fetch trends and papers data
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const period = getPeriodForAPI(dateRange);
+        
+        // Fetch trends data
+        const trendsResponse = await fetchPaperTrends(period, 'all');
+        setTrendsData(trendsResponse.trends || []);
+
+        // Fetch stats for metrics (use same period format)
+        const statsResponse = await fetchPaperStats(period);
+        setStats(statsResponse.industryStats || {});
+
+        // Fetch top papers (sorted by citations)
+        const papersResponse = await fetchPapers({ limit: 100 });
+        const allPapers = papersResponse.papers || [];
+        
+        // Filter by date range
+        const now = new Date();
+        let cutoffDate: Date | null = null;
+        if (period !== 'all') {
+          switch (period) {
+            case '3m':
+              cutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+              break;
+            case '6m':
+              cutoffDate = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+              break;
+            case '12m':
+              cutoffDate = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+              break;
+          }
+        }
+        
+        const filteredPapers = cutoffDate
+          ? allPapers.filter(p => {
+              const paperDate = new Date(p.published || p.updated || 0);
+              return paperDate >= cutoffDate!;
+            })
+          : allPapers;
+
+        // Sort by citations and get top 6
+        const sortedPapers = filteredPapers
+          .sort((a, b) => (b.citations || 0) - (a.citations || 0))
+          .slice(0, 6);
+        setTopPapers(sortedPapers);
+
+        // Calculate metrics
+        const totalPapers = filteredPapers.length;
+        const avgCitations = filteredPapers.length > 0
+          ? Math.round(filteredPapers.reduce((sum, p) => sum + (p.citations || 0), 0) / filteredPapers.length)
+          : 0;
+        
+        // Find top field from stats
+        const topFieldEntry = Object.entries(statsResponse.industryStats || {})
+          .sort(([, a], [, b]) => (b as number) - (a as number))[0];
+        const topField = topFieldEntry ? topFieldEntry[0] : 'NLP';
+
+        setMetrics({
+          totalPapers,
+          avgCitations,
+          topField
+        });
+      } catch (error) {
+        console.error('Error loading trends data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [dateRange]);
 
   const researchMetrics = [
-    { label: 'Total Papers', value: '2,250', change: '+12%', positive: true },
-    { label: 'Avg Citations', value: '162', change: '+8%', positive: true },
-    { label: 'Top Field', value: 'NLP', change: '28%', positive: true },
+    { 
+      label: 'Total Papers', 
+      value: metrics.totalPapers.toLocaleString(), 
+      change: '', 
+      positive: true 
+    },
+    { 
+      label: 'Avg Citations', 
+      value: metrics.avgCitations.toLocaleString(), 
+      change: '', 
+      positive: true 
+    },
+    { 
+      label: 'Top Field', 
+      value: metrics.topField, 
+      change: stats[metrics.topField] ? `${Math.round((stats[metrics.topField] / metrics.totalPapers) * 100)}%` : '', 
+      positive: true 
+    },
   ];
 
   return (
@@ -242,8 +325,17 @@ function ResearchPaperTrendsSection() {
 
       {/* Chart */}
       <div className="mb-6 bg-white dark:bg-gray-800/50 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={researchPaperData}>
+        {loading ? (
+          <div className="flex items-center justify-center h-[280px]">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        ) : trendsData.length === 0 ? (
+          <div className="flex items-center justify-center h-[280px] text-gray-500">
+            No trend data available
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={trendsData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
             <XAxis 
               dataKey="month" 
@@ -315,6 +407,7 @@ function ResearchPaperTrendsSection() {
             />
           </LineChart>
         </ResponsiveContainer>
+        )}
         {/* Legend */}
         <div className="flex flex-wrap items-center justify-center gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
           {Object.entries(fieldColors).map(([field, color]) => (
@@ -331,44 +424,68 @@ function ResearchPaperTrendsSection() {
         <div className="flex items-center gap-2 mb-4">
           <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Top Papers This Month
+            Top Papers {dateRange === '3m' ? 'This Quarter' : dateRange === '12m' ? 'This Year' : 'All Time'}
           </h3>
         </div>
-        <div className="space-y-2 max-h-64 overflow-y-auto">
-          {topResearchPapers.map((paper, index) => (
-            <motion.div
-              key={paper.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
-              className="group p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer"
-              title={`${paper.title} - ${paper.authors} - ${paper.citations} citations`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded">
-                      {paper.field}
-                    </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {paper.date}
-                    </span>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+          </div>
+        ) : topPapers.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 text-sm">
+            No papers available
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {topPapers.map((paper, index) => {
+              const paperField = getPaperField(paper);
+              const paperDate = new Date(paper.published || paper.updated || 0);
+              const formattedDate = paperDate.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              });
+              const authorsDisplay = paper.authors && paper.authors.length > 0
+                ? paper.authors.slice(0, 2).join(', ') + (paper.authors.length > 2 ? ' et al.' : '')
+                : 'Unknown authors';
+
+              return (
+                <motion.div
+                  key={paper.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="group p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer"
+                  onClick={() => window.open(paper.link, '_blank')}
+                  title={`${paper.title} - ${authorsDisplay} - ${paper.citations || 0} citations`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded">
+                          {paperField}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {formattedDate}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1 line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                        {paper.title}
+                      </h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {authorsDisplay}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>{(paper.citations || 0).toLocaleString()}</span>
+                    </div>
                   </div>
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1 line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {paper.title}
-                  </h4>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
-                    {paper.authors}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>{paper.citations.toLocaleString()}</span>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -385,16 +502,23 @@ function InvestmentTrendsSection() {
     { label: 'Avg Deal Size', value: '$80M', change: '+12%', positive: true },
   ];
 
+  // Note: Investment data is sample/mock data as we don't have investment data in the backend
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
       {/* Header with Filters */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-            Investment Trends
-          </h2>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              Investment Trends
+            </h2>
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded">
+              Sample Data
+            </span>
+          </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            AI startup funding activity
+            AI startup funding activity (mock data - investment API integration coming soon)
           </p>
         </div>
         <div className="flex items-center gap-2">

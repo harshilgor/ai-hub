@@ -2,7 +2,51 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Filter, ExternalLink, Bookmark, Share2, PlusCircle, Eye, TrendingUp, RefreshCw, FileText } from 'lucide-react';
 import { mockStartups, aiCategories } from '../data/mockData';
-import { fetchPapers, fetchPaperStats, refreshPapers, getPaperAutocomplete, type Paper } from '../services/api';
+import { fetchPapers, fetchPaperStats, refreshPapers, getPaperAutocomplete, getTotalPaperCount, type Paper } from '../services/api';
+
+// All research domains - expanded to include all major fields
+const allResearchDomains = [
+  // AI & Machine Learning
+  ...aiCategories,
+  // Mathematics
+  'Mathematics',
+  'Algebra',
+  'Geometry',
+  'Number Theory',
+  'Topology',
+  'Analysis',
+  'Probability',
+  'Statistics',
+  // Physics
+  'Physics',
+  'Quantum Physics',
+  'Optics',
+  'Plasma Physics',
+  'Condensed Matter',
+  'High Energy Physics',
+  // Economics & Finance
+  'Economics',
+  'Econometrics',
+  'Finance',
+  'Quantitative Finance',
+  // Biology & Life Sciences
+  'Biology',
+  'Genomics',
+  'Computational Biology',
+  'Neuroscience',
+  // Computer Science (non-AI)
+  'Computer Science',
+  'Algorithms',
+  'Systems',
+  'Networks',
+  'Security',
+  // Engineering
+  'Electrical Engineering',
+  'Signal Processing',
+  'Control Systems',
+  // Other
+  'Other'
+];
 
 export default function ResearchPapers() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,6 +61,10 @@ export default function ResearchPapers() {
   const [industryStats, setIndustryStats] = useState<Record<string, number>>({});
   const [sourceStats, setSourceStats] = useState<{arxiv: number; 'semantic-scholar': number; total: number} | null>(null);
   const [statsPeriod, setStatsPeriod] = useState<string>('all');
+  const [totalPapers, setTotalPapers] = useState<number>(0);
+  const [papersAdded24h, setPapersAdded24h] = useState<number>(0);
+  const [papersAdded7d, setPapersAdded7d] = useState<number>(0);
+  const [growthRate, setGrowthRate] = useState<number>(0);
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -28,6 +76,7 @@ export default function ResearchPapers() {
   useEffect(() => {
     loadPapers();
     loadStats();
+    loadTotalCount(); // Also load total count separately
   }, [selectedCategory, selectedVenue, selectedSource]);
 
   // Auto-refresh papers every 2 minutes to show new papers
@@ -36,6 +85,7 @@ export default function ResearchPapers() {
       console.log('🔄 Auto-refreshing papers...');
       loadPapers();
       loadStats();
+      loadTotalCount(); // Also refresh total count
     }, 2 * 60 * 1000); // Every 2 minutes
 
     return () => clearInterval(interval);
@@ -107,6 +157,9 @@ export default function ResearchPapers() {
       if (response.sources) {
         setSourceStats(response.sources);
       }
+      
+      // Fetch total count from database (unfiltered) separately
+      await loadTotalCount();
     } catch (err) {
       setError('Failed to load papers. Backend server may not be running.');
       console.error('Error loading papers:', err);
@@ -114,6 +167,69 @@ export default function ResearchPapers() {
       setPapers([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadTotalCount() {
+    try {
+      const totalData = await getTotalPaperCount();
+      setTotalPapers(totalData.total);
+      setLastUpdate(totalData.lastUpdate);
+      // Calculate growth metrics with the actual total
+      calculateGrowthMetrics(totalData.total);
+    } catch (err) {
+      console.error('Error loading total count:', err);
+      // Fallback: try to get total from the filtered response
+      // This will be less accurate but better than nothing
+    }
+  }
+
+  // Calculate growth metrics by fetching all papers and checking dates
+  async function calculateGrowthMetrics(currentTotal: number) {
+    try {
+      // Fetch all papers (with high limit) to calculate growth
+      const allPapersResponse = await fetchPapers({ limit: 10000 });
+      const allPapers = allPapersResponse.papers || [];
+      
+      const now = new Date();
+      const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      let added24h = 0;
+      let added7d = 0;
+      
+      allPapers.forEach(paper => {
+        try {
+          const paperDate = new Date(paper.published || paper.updated || 0);
+          if (!isNaN(paperDate.getTime())) {
+            if (paperDate >= last24h) {
+              added24h++;
+            }
+            if (paperDate >= last7d) {
+              added7d++;
+            }
+          }
+        } catch (e) {
+          // Skip papers with invalid dates
+        }
+      });
+      
+      setPapersAdded24h(added24h);
+      setPapersAdded7d(added7d);
+      
+      // Calculate growth rate (papers added in last 7 days as percentage of total)
+      if (currentTotal > 0) {
+        const growth = (added7d / currentTotal) * 100;
+        setGrowthRate(growth);
+      } else {
+        setGrowthRate(0);
+      }
+    } catch (err) {
+      console.error('Error calculating growth metrics:', err);
+      // Set defaults on error
+      setPapersAdded24h(0);
+      setPapersAdded7d(0);
+      setGrowthRate(0);
     }
   }
 
@@ -139,6 +255,7 @@ export default function ResearchPapers() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       await loadPapers();
       await loadStats();
+      await loadTotalCount(); // Also refresh total count
     } catch (err) {
       console.error('Error refreshing papers:', err);
     } finally {
@@ -169,8 +286,8 @@ export default function ResearchPapers() {
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
             <div className="flex-shrink-0 w-full lg:flex-1 lg:min-w-0">
               <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-4xl font-bold mb-1 sm:mb-2 break-words">Latest Research Papers</h1>
-              <p className="text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary break-words">
-                Real-time updates from arXiv and Semantic Scholar
+              <p className="text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary break-words mb-2 sm:mb-3">
+                Research papers from all domains: AI, Mathematics, Physics, Economics, Biology, Computer Science, and more
                 {sourceStats && (
                   <span className="ml-1 sm:ml-2 text-xs">
                     ({sourceStats.arxiv} arXiv, {sourceStats['semantic-scholar']} SS)
@@ -182,6 +299,74 @@ export default function ResearchPapers() {
                   </span>
                 )}
               </p>
+              
+              {/* Live Paper Count & Growth Stats */}
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4 mt-2 sm:mt-3">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-primary-light/10 to-insight-light/10 dark:from-primary-dark/10 dark:to-insight-dark/10 rounded-lg border border-primary-light/20 dark:border-primary-dark/20"
+                >
+                  <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-primary-light dark:text-primary-dark" />
+                  <div>
+                    <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">Total Papers</div>
+                    <div className="text-lg sm:text-xl font-bold text-primary-light dark:text-primary-dark">
+                      {totalPapers.toLocaleString()}
+                    </div>
+                  </div>
+                </motion.div>
+                
+                {papersAdded24h > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.1 }}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20 rounded-lg border border-green-500/20 dark:border-green-500/30"
+                  >
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
+                    <div>
+                      <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">Last 24h</div>
+                      <div className="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400">
+                        +{papersAdded24h}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+                
+                {papersAdded7d > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.2 }}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 dark:from-blue-500/20 dark:to-cyan-500/20 rounded-lg border border-blue-500/20 dark:border-blue-500/30"
+                  >
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400" />
+                    <div>
+                      <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">Last 7 days</div>
+                      <div className="text-lg sm:text-xl font-bold text-blue-600 dark:text-blue-400">
+                        +{papersAdded7d}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+                
+                {growthRate > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 dark:from-purple-500/20 dark:to-pink-500/20 rounded-lg border border-purple-500/20 dark:border-purple-500/30"
+                  >
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 dark:text-purple-400" />
+                    <div>
+                      <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">Growth Rate</div>
+                      <div className="text-lg sm:text-xl font-bold text-purple-600 dark:text-purple-400">
+                        +{growthRate.toFixed(1)}%
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
             </div>
 
             {/* Filter Bar - Compact and Contained */}
@@ -226,12 +411,49 @@ export default function ResearchPapers() {
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="px-2 py-1.5 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none flex-shrink-0 sm:w-auto min-w-[120px]"
+                  className="px-2 py-1.5 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none flex-shrink-0 sm:w-auto min-w-[140px]"
                 >
-                  <option value="">All Categories</option>
-                  {aiCategories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
+                  <option value="">All Domains</option>
+                  <optgroup label="AI & Machine Learning">
+                    {aiCategories.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Mathematics & Statistics">
+                    <option value="Mathematics">Mathematics</option>
+                    <option value="Statistics">Statistics</option>
+                    <option value="Probability">Probability</option>
+                    <option value="Algebra">Algebra</option>
+                    <option value="Geometry">Geometry</option>
+                  </optgroup>
+                  <optgroup label="Physics">
+                    <option value="Physics">Physics</option>
+                    <option value="Quantum Physics">Quantum Physics</option>
+                    <option value="Optics">Optics</option>
+                    <option value="Condensed Matter">Condensed Matter</option>
+                  </optgroup>
+                  <optgroup label="Economics & Finance">
+                    <option value="Economics">Economics</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Quantitative Finance">Quantitative Finance</option>
+                  </optgroup>
+                  <optgroup label="Biology & Life Sciences">
+                    <option value="Biology">Biology</option>
+                    <option value="Genomics">Genomics</option>
+                    <option value="Computational Biology">Computational Biology</option>
+                    <option value="Neuroscience">Neuroscience</option>
+                  </optgroup>
+                  <optgroup label="Computer Science">
+                    <option value="Computer Science">Computer Science</option>
+                    <option value="Algorithms">Algorithms</option>
+                    <option value="Systems">Systems</option>
+                    <option value="Networks">Networks</option>
+                    <option value="Security">Security</option>
+                  </optgroup>
+                  <optgroup label="Engineering">
+                    <option value="Electrical Engineering">Electrical Engineering</option>
+                    <option value="Signal Processing">Signal Processing</option>
+                  </optgroup>
                 </select>
 
                 <select
@@ -325,7 +547,7 @@ export default function ResearchPapers() {
                           {paper.title}
                         </h3>
                       </a>
-                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary mb-2">
                         <span className="truncate max-w-[200px] sm:max-w-none">{paper.authors.join(', ')}</span>
                         <span>•</span>
                         <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-xs font-medium ${
@@ -339,8 +561,29 @@ export default function ResearchPapers() {
                         <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-insight-light/10 dark:bg-insight-dark/10 text-insight-light dark:text-insight-dark font-medium text-xs">
                           {paper.venue}
                         </span>
-                        <span>•</span>
-                        <span>{paper.date || paper.year || new Date(paper.published).getFullYear()}</span>
+                      </div>
+                      {/* Publication Date - Prominently Displayed */}
+                      <div className="flex items-center gap-2 text-xs sm:text-sm mb-3 sm:mb-4">
+                        <span className="font-medium text-light-text dark:text-dark-text">Published:</span>
+                        <span className="text-light-text-secondary dark:text-dark-text-secondary">
+                          {(() => {
+                            try {
+                              const pubDate = paper.published ? new Date(paper.published) : 
+                                            paper.updated ? new Date(paper.updated) : null;
+                              if (pubDate && !isNaN(pubDate.getTime())) {
+                                return pubDate.toLocaleDateString('en-US', { 
+                                  year: 'numeric', 
+                                  month: 'long', 
+                                  day: 'numeric' 
+                                });
+                              }
+                              // Fallback to year if date parsing fails
+                              return paper.year || paper.date || 'Unknown date';
+                            } catch (e) {
+                              return paper.year || paper.date || 'Unknown date';
+                            }
+                          })()}
+                        </span>
                       </div>
                     </div>
                     <div className="flex gap-1 sm:gap-2 flex-shrink-0">
@@ -484,7 +727,7 @@ export default function ResearchPapers() {
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-insight-light dark:text-insight-dark" />
-                    <h3 className="font-semibold text-base sm:text-lg">Research Activity by Industry</h3>
+                    <h3 className="font-semibold text-base sm:text-lg">Research Activity by Domain</h3>
                   </div>
                   <select
                     value={statsPeriod}
@@ -498,7 +741,7 @@ export default function ResearchPapers() {
                   </select>
                 </div>
                 <p className="text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary mb-3 sm:mb-4">
-                  Industries seeing the most research papers
+                  Research domains with the most papers
                   {statsPeriod !== 'all' && (
                     <span className="ml-1 text-primary-light dark:text-primary-dark">
                       ({statsPeriod === 'month' ? 'This Month' : statsPeriod === 'quarter' ? 'This Quarter' : 'This Year'})
@@ -506,8 +749,13 @@ export default function ResearchPapers() {
                   )}
                 </p>
                 
-                <div className="space-y-2 sm:space-y-3">
-                  {topCategories.map((item, index) => (
+                {topCategories.length === 0 ? (
+                  <div className="text-center py-6 text-light-text-secondary dark:text-dark-text-secondary text-sm">
+                    No papers found for the selected period
+                  </div>
+                ) : (
+                  <div className="space-y-2 sm:space-y-3">
+                    {topCategories.map((item, index) => (
                     <motion.div
                       key={item.category}
                       initial={{ opacity: 0, scale: 0.9 }}
@@ -533,8 +781,9 @@ export default function ResearchPapers() {
                         {item.count} paper{item.count !== 1 ? 's' : ''} published
                       </p>
                     </motion.div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </motion.div>
 
               {/* Papers Everyone's Reading */}

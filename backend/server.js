@@ -5,6 +5,10 @@ import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 import { fetchArXivPapers, fetchArXivLatest, categorizePapersByIndustry } from './services/arxivService.js';
 import { 
@@ -32,6 +36,7 @@ let papersCache = [];
 let lastFetchTime = null;
 let industryStats = {};
 let lastPaperDate = null; // Track the date of the newest paper we've seen
+let oldestPaperDate = null; // Track the date of the oldest paper we've fetched
 
 // Database file path
 const DB_PATH = path.join(__dirname, 'data', 'papers.json');
@@ -48,33 +53,34 @@ async function loadPapersFromDB() {
     lastFetchTime = parsed.lastFetchTime;
     industryStats = parsed.industryStats || {};
     lastPaperDate = parsed.lastPaperDate || null;
+    oldestPaperDate = parsed.oldestPaperDate || null;
     
-    // If we have papers, set lastPaperDate to the newest one
-    if (papersCache.length > 0 && !lastPaperDate) {
-      papersCache.sort((a, b) => {
+    // If we have papers, set lastPaperDate to the newest one and oldestPaperDate to the oldest one
+    if (papersCache.length > 0) {
+      // Sort by date to find newest and oldest
+      const sortedByDate = [...papersCache].sort((a, b) => {
         const dateA = new Date(a.published || a.updated || 0);
         const dateB = new Date(b.published || b.updated || 0);
-        return dateB.getTime() - dateA.getTime();
+        return dateB.getTime() - dateA.getTime(); // Newest first
       });
-      const newest = new Date(papersCache[0].published || papersCache[0].updated || 0);
-      lastPaperDate = newest.toISOString();
-    }
-    
-    // If lastPaperDate is too old (more than 7 days), reset it to ensure fresh papers
-    if (lastPaperDate) {
-      const lastDate = new Date(lastPaperDate);
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       
-      if (lastDate < sevenDaysAgo) {
-        console.log('⚠️ Last paper date is too old, resetting to last 7 days');
-        lastPaperDate = sevenDaysAgo.toISOString();
+      if (!lastPaperDate) {
+        const newest = new Date(sortedByDate[0].published || sortedByDate[0].updated || 0);
+        lastPaperDate = newest.toISOString();
+      }
+      
+      if (!oldestPaperDate) {
+        const oldest = new Date(sortedByDate[sortedByDate.length - 1].published || sortedByDate[sortedByDate.length - 1].updated || 0);
+        oldestPaperDate = oldest.toISOString();
       }
     }
     
     console.log(`📚 Loaded ${papersCache.length} papers from database`);
     if (lastPaperDate) {
-      console.log(`📅 Last paper date: ${lastPaperDate}`);
+      console.log(`📅 Newest paper date: ${lastPaperDate}`);
+    }
+    if (oldestPaperDate) {
+      console.log(`📅 Oldest paper date: ${oldestPaperDate}`);
     }
   } catch (error) {
     console.log('📝 No existing database found, will create new one');
@@ -94,7 +100,8 @@ async function savePapersToDP() {
         papers: papersCache,
         lastFetchTime: lastFetchTime,
         industryStats: industryStats,
-        lastPaperDate: lastPaperDate
+        lastPaperDate: lastPaperDate,
+        oldestPaperDate: oldestPaperDate
       }, null, 2)
     );
     console.log(`💾 Saved ${papersCache.length} papers to database`);
@@ -179,6 +186,7 @@ function removeDuplicatePapers(papers) {
 
 /**
  * Enrich papers with Semantic Scholar citation data (batch)
+ * Reduced enrichment to avoid rate limits
  */
 async function enrichPapersWithCitations(papers) {
   const enriched = [];
@@ -187,23 +195,33 @@ async function enrichPapersWithCitations(papers) {
   
   enriched.push(...alreadyEnriched);
   
-  // Enrich arXiv papers with citations (limit to avoid rate limits)
-  console.log(`🔍 Enriching ${Math.min(arxivPapers.length, 50)} arXiv papers with citations...`);
+  // Enrich arXiv papers with citations (reduced limit to avoid rate limits)
+  // Only enrich a small subset to avoid hitting rate limits
+  const enrichmentLimit = Math.min(arxivPapers.length, 10); // Reduced from 50 to 10
+  console.log(`🔍 Enriching ${enrichmentLimit} arXiv papers with citations (limited to avoid rate limits)...`);
   
-  for (let i = 0; i < Math.min(arxivPapers.length, 50); i++) {
+  for (let i = 0; i < enrichmentLimit; i++) {
     try {
       const enrichedPaper = await enrichPaperWithSemanticScholar(arxivPapers[i]);
       enriched.push(enrichedPaper);
-      await new Promise(resolve => setTimeout(resolve, 100)); // Rate limiting
+      // Rate limiter already handles delays, but add extra buffer
+      await new Promise(resolve => setTimeout(resolve, 1200)); // 1.2 seconds between enrichment calls
     } catch (error) {
+      // If enrichment fails (especially 429), skip enrichment for remaining papers
+      if (error.response && error.response.status === 429) {
+        console.log(`⚠️ Rate limit hit during enrichment. Skipping remaining enrichments.`);
+        // Add remaining papers without enrichment
+        enriched.push(...arxivPapers.slice(i));
+        break;
+      }
       // If enrichment fails, add paper without citations
       enriched.push(arxivPapers[i]);
     }
   }
   
   // Add remaining arXiv papers without enrichment
-  if (arxivPapers.length > 50) {
-    enriched.push(...arxivPapers.slice(50));
+  if (arxivPapers.length > enrichmentLimit) {
+    enriched.push(...arxivPapers.slice(enrichmentLimit));
   }
   
   return enriched;
@@ -211,39 +229,50 @@ async function enrichPapersWithCitations(papers) {
 
 /**
  * Fetch and update papers from all sources in parallel
+ * Strategy: Always try recent papers first, then expand backwards in time to build comprehensive database
  */
 async function updatePapers() {
   console.log('🔄 Fetching new papers from all sources...');
   
   try {
     const currentYear = new Date().getFullYear();
-    
-    // ALWAYS fetch from the last 3 days, regardless of lastPaperDate
-    // This ensures we always get the latest papers, even if lastPaperDate is stuck
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-    threeDaysAgo.setHours(0, 0, 0, 0); // Start of day 3 days ago
-    
-    // Use last 3 days as the threshold - ignore lastPaperDate to prevent getting stuck
-    let dateThreshold = threeDaysAgo;
-    
-    console.log(`📅 Fetching papers from: ${dateThreshold.toISOString()} (always last 3 days, ignoring lastPaperDate to prevent stuck state)`);
-    
-    // Fetch from both sources in parallel (both are primary sources)
-    console.log('🔍 Fetching from Semantic Scholar and arXiv in parallel...');
-    
-    let papers = [];
-    let attempts = 0;
-    const maxAttempts = 2;
-    
-    // Try fetching with date threshold, if no NEW papers found, expand the window
     let trulyNewPapers = [];
-    let attempts = 0;
-    const maxAttempts = 3; // Try up to 3 times with expanding windows
     
-    while (trulyNewPapers.length === 0 && attempts < maxAttempts) {
-      const hoursBack = Math.ceil((Date.now() - dateThreshold.getTime()) / (1000 * 60 * 60));
-      console.log(`🔍 Attempt ${attempts + 1}: Fetching papers from last ${Math.round(hoursBack / 24)} days (threshold: ${dateThreshold.toISOString()})`);
+    // Strategy: Try recent first, then go backwards
+    // Define expansion strategy: recent → older
+    const expansionWindows = [
+      { days: 3, label: 'last 3 days' },
+      { days: 7, label: 'last 7 days' },
+      { days: 14, label: 'last 14 days' },
+      { days: 30, label: 'last 30 days' },
+      { days: 60, label: 'last 60 days' },
+      { days: 90, label: 'last 90 days' },
+      { days: 180, label: 'last 6 months' },
+      { days: 365, label: 'last year' },
+      { days: 730, label: 'last 2 years' },
+    ];
+    
+    let currentWindowIndex = 0;
+    
+    while (trulyNewPapers.length === 0 && currentWindowIndex < expansionWindows.length) {
+      const window = expansionWindows[currentWindowIndex];
+      const dateThreshold = new Date();
+      dateThreshold.setDate(dateThreshold.getDate() - window.days);
+      dateThreshold.setHours(0, 0, 0, 0);
+      
+      // If we have an oldestPaperDate and we're going back further, check if we should skip
+      if (oldestPaperDate) {
+        const oldestDate = new Date(oldestPaperDate);
+        // If the window goes back further than our oldest paper, we might already have papers from this period
+        // But we still want to try in case there are gaps
+        const daysSinceOldest = Math.floor((Date.now() - oldestDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSinceOldest > window.days && currentWindowIndex > 3) {
+          // We've already fetched papers from this period, but continue to fill any gaps
+          console.log(`⏭️ Note: Already have papers from ${window.label}, but checking for gaps...`);
+        }
+      }
+      
+      console.log(`🔍 Attempt ${currentWindowIndex + 1}/${expansionWindows.length}: Fetching papers from ${window.label} (threshold: ${dateThreshold.toISOString()})`);
       
       const [ssResult, arxivResult] = await Promise.allSettled([
         fetchLatestPapersFromSemanticScholar(100, currentYear, dateThreshold),
@@ -286,26 +315,9 @@ async function updatePapers() {
       }
 
       if (papers.length === 0) {
-        console.log('⚠️ No papers fetched from any source');
-        // Expand date window and try again
-        if (attempts < maxAttempts - 1) {
-          attempts++;
-          if (attempts === 1) {
-            // First expansion: last 14 days
-            dateThreshold = new Date();
-            dateThreshold.setDate(dateThreshold.getDate() - 14);
-            console.log(`📅 Expanding search to last 14 days...`);
-          } else {
-            // Second expansion: last 30 days
-            dateThreshold = new Date();
-            dateThreshold.setDate(dateThreshold.getDate() - 30);
-            console.log(`📅 Expanding search to last 30 days...`);
-          }
-          continue;
-        } else {
-          console.log('⚠️ No papers fetched after all attempts');
-          return;
-        }
+        console.log(`⚠️ No papers found for ${window.label}, trying next window...`);
+        currentWindowIndex++;
+        continue;
       }
 
       console.log(`📦 Total papers before deduplication: ${papers.length}`);
@@ -336,37 +348,32 @@ async function updatePapers() {
         return true;
       });
 
-      console.log(`🆕 Found ${trulyNewPapers.length} truly new papers (${enrichedNewPapers.length - trulyNewPapers.length} were already in cache)`);
+      console.log(`🆕 Found ${trulyNewPapers.length} truly new papers from ${window.label} (${enrichedNewPapers.length - trulyNewPapers.length} were already in cache)`);
       
-      // If no new papers found, expand the date window and try again
-      if (trulyNewPapers.length === 0 && attempts < maxAttempts - 1) {
-        attempts++;
-        if (attempts === 1) {
-          // First expansion: last 14 days
-          dateThreshold = new Date();
-          dateThreshold.setDate(dateThreshold.getDate() - 14);
-          console.log(`⚠️ No new papers found, expanding search to last 14 days...`);
-        } else {
-          // Second expansion: last 30 days
-          dateThreshold = new Date();
-          dateThreshold.setDate(dateThreshold.getDate() - 30);
-          console.log(`⚠️ No new papers found, expanding search to last 30 days...`);
-        }
-      } else {
-        break;
+      if (trulyNewPapers.length > 0) {
+        break; // Found new papers, stop expanding
       }
+      
+      currentWindowIndex++;
     }
 
     if (trulyNewPapers.length === 0) {
-      console.log('⚠️ No new papers found after expanding search window - keeping existing cache');
-      // Still update lastFetchTime to show we tried
+      console.log('⚠️ No new papers found after all expansion attempts - database is comprehensive for available time windows');
+      console.log(`📊 Current database size: ${papersCache.length} papers`);
       lastFetchTime = new Date().toISOString();
       await savePapersToDP();
       return;
     }
+    
+    console.log(`📥 Processing ${trulyNewPapers.length} new papers to add to database...`);
+    console.log(`📊 Current database has ${papersCache.length} papers, will add ${trulyNewPapers.length} new ones`);
 
     // Merge: add new papers to existing cache
+    const beforeMergeCount = papersCache.length;
+    console.log(`📊 Before merge: ${beforeMergeCount} papers in cache, ${trulyNewPapers.length} new papers to add`);
+    
     const mergedPapers = [...trulyNewPapers, ...papersCache];
+    console.log(`📊 After merge: ${mergedPapers.length} total papers (should be ${beforeMergeCount + trulyNewPapers.length})`);
 
     // Sort by published date (newest first)
     mergedPapers.sort((a, b) => {
@@ -375,29 +382,42 @@ async function updatePapers() {
       return dateB.getTime() - dateA.getTime();
     });
 
-    // Update lastPaperDate to the newest paper's date
+    // Update both newest and oldest dates
     if (mergedPapers.length > 0) {
       const newestPaper = mergedPapers[0];
       const newestDate = new Date(newestPaper.published || newestPaper.updated || 0);
       if (!lastPaperDate || newestDate > new Date(lastPaperDate)) {
         lastPaperDate = newestDate.toISOString();
-        console.log(`📅 Updated last paper date to: ${lastPaperDate}`);
+        console.log(`📅 Updated newest paper date to: ${lastPaperDate}`);
+      }
+      
+      const oldestPaper = mergedPapers[mergedPapers.length - 1];
+      const oldestDate = new Date(oldestPaper.published || oldestPaper.updated || 0);
+      if (!oldestPaperDate || oldestDate < new Date(oldestPaperDate)) {
+        oldestPaperDate = oldestDate.toISOString();
+        console.log(`📅 Updated oldest paper date to: ${oldestPaperDate}`);
       }
     }
 
-    // Keep only the most recent 1000 papers to prevent unbounded growth
-    const MAX_CACHE_SIZE = 1000;
+    // Increased cache limit to allow large database growth
+    const MAX_CACHE_SIZE = 10000; // Increased from 1000 to 10000
     const limitedPapers = mergedPapers.slice(0, MAX_CACHE_SIZE);
     
     if (mergedPapers.length > MAX_CACHE_SIZE) {
       console.log(`📦 Limited cache from ${mergedPapers.length} to ${MAX_CACHE_SIZE} papers (removed oldest)`);
+      // Update oldestPaperDate to reflect what we kept
+      const keptOldest = limitedPapers[limitedPapers.length - 1];
+      oldestPaperDate = new Date(keptOldest.published || keptOldest.updated || 0).toISOString();
     }
 
     // Categorize by industry (use all papers for stats)
     industryStats = categorizePapersByIndustry(limitedPapers);
 
     // Update cache
+    const previousCount = papersCache.length;
     papersCache = limitedPapers;
+    const newCount = papersCache.length;
+    const actualAdded = newCount - previousCount;
     lastFetchTime = new Date().toISOString();
 
     // Save to database
@@ -407,7 +427,9 @@ async function updatePapers() {
     const arxivCount = limitedPapers.filter(p => p.sourceId === 'arxiv').length;
     const ssCount = limitedPapers.filter(p => p.sourceId === 'semantic-scholar').length;
     
-    console.log(`✅ Updated ${papersCache.length} papers (${trulyNewPapers.length} new)`);
+    console.log(`✅ Updated database: ${papersCache.length} total papers (${trulyNewPapers.length} new fetched, ${actualAdded} actually added)`);
+    console.log(`📈 Count change: ${previousCount} → ${newCount} (+${actualAdded})`);
+    console.log(`📊 Date range: ${oldestPaperDate || 'N/A'} to ${lastPaperDate || 'N/A'}`);
     console.log(`📊 Source breakdown: arXiv: ${arxivCount}, Semantic Scholar: ${ssCount}`);
     console.log(`📊 Industry stats:`, industryStats);
 
@@ -438,9 +460,40 @@ app.get('/api/papers', (req, res) => {
 
   // Filter by category/tag
   if (category) {
-    filtered = filtered.filter(paper => 
-      paper.tags.some(tag => tag.toLowerCase().includes(category.toLowerCase()))
-    );
+    const categoryLower = category.toLowerCase();
+    
+    // Map of category names to related keywords/tags for better matching
+    const categoryKeywords = {
+      'mathematics': ['mathematics', 'math', 'algebra', 'geometry', 'topology', 'analysis', 'number theory', 'combinatorics', 'probability', 'statistics theory'],
+      'statistics': ['statistics', 'stat', 'probability', 'statistical'],
+      'physics': ['physics', 'quantum', 'optics', 'plasma', 'condensed matter', 'high energy'],
+      'economics': ['economics', 'econometrics', 'economic', 'finance'],
+      'finance': ['finance', 'financial', 'trading', 'quantitative finance', 'portfolio', 'risk management'],
+      'biology': ['biology', 'genomics', 'computational biology', 'neuroscience', 'biomolecules', 'quantitative biology'],
+      'computer science': ['computer science', 'algorithms', 'systems', 'networks', 'security', 'programming', 'software'],
+      'electrical engineering': ['electrical engineering', 'signal processing', 'control systems', 'eess']
+    };
+    
+    // Get keywords for this category
+    const keywords = categoryKeywords[categoryLower] || [categoryLower];
+    
+    filtered = filtered.filter(paper => {
+      const paperTags = (paper.tags || []).map(t => t.toLowerCase());
+      const paperTitle = (paper.title || '').toLowerCase();
+      const paperSummary = (paper.summary || '').toLowerCase();
+      
+      // Check if any tag matches
+      if (paperTags.some(tag => keywords.some(kw => tag.includes(kw)))) {
+        return true;
+      }
+      
+      // Also check if category name appears in title or summary (for broader matching)
+      if (keywords.some(kw => paperTitle.includes(kw) || paperSummary.includes(kw))) {
+        return true;
+      }
+      
+      return false;
+    });
   }
 
   // Filter by venue
@@ -489,7 +542,7 @@ app.get('/api/papers', (req, res) => {
 
 /**
  * GET /api/papers/stats - Get paper statistics by industry
- * Query params: period (month, quarter, year, all)
+ * Query params: period (month, quarter, year, 3m, 6m, 12m, all)
  */
 app.get('/api/papers/stats', (req, res) => {
   const { period = 'all' } = req.query;
@@ -512,6 +565,15 @@ app.get('/api/papers/stats', (req, res) => {
       case 'year':
         cutoffDate = new Date(now.getFullYear(), 0, 1);
         break;
+      case '3m':
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        break;
+      case '6m':
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+        break;
+      case '12m':
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+        break;
       default:
         cutoffDate = null;
     }
@@ -531,6 +593,142 @@ app.get('/api/papers/stats', (req, res) => {
     industryStats: filteredStats,
     totalPapers: filteredPapers.length,
     period: period,
+    lastUpdate: lastFetchTime
+  });
+});
+
+/**
+ * GET /api/papers/trends - Get monthly trend data by field
+ * Query params: period (3m, 6m, 12m, all), fields (comma-separated or 'all')
+ */
+app.get('/api/papers/trends', (req, res) => {
+  const { period = '12m', fields = 'all' } = req.query;
+  
+  let filteredPapers = [...papersCache];
+  
+  // Filter by time period
+  const now = new Date();
+  let cutoffDate = null;
+  
+  if (period !== 'all') {
+    switch (period) {
+      case '3m':
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        break;
+      case '6m':
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+        break;
+      case '12m':
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+        break;
+      default:
+        cutoffDate = null;
+    }
+    
+    if (cutoffDate) {
+      filteredPapers = filteredPapers.filter(paper => {
+        const paperDate = new Date(paper.published || paper.updated || 0);
+        return paperDate >= cutoffDate;
+      });
+    }
+  }
+  
+  // Define fields to track
+  const fieldList = fields === 'all' 
+    ? ['NLP', 'Computer Vision', 'LLMs', 'Agents', 'Robotics', 'Healthcare AI']
+    : fields.split(',').map(f => f.trim());
+  
+  // Group papers by month and field
+  const trendsByMonth = {};
+  
+  filteredPapers.forEach(paper => {
+    const paperDate = new Date(paper.published || paper.updated || 0);
+    const monthKey = paperDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    const monthIndex = `${paperDate.getFullYear()}-${String(paperDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    if (!trendsByMonth[monthIndex]) {
+      trendsByMonth[monthIndex] = {
+        month: paperDate.toLocaleDateString('en-US', { month: 'short' }),
+        monthIndex: monthIndex,
+        date: paperDate,
+        NLP: 0,
+        'Computer Vision': 0,
+        LLMs: 0,
+        Agents: 0,
+        Robotics: 0,
+        'Healthcare AI': 0
+      };
+    }
+    
+    // Check which fields this paper belongs to based on tags and title/summary
+    const text = (paper.title + ' ' + (paper.summary || '')).toLowerCase();
+    const paperTags = (paper.tags || []).map(t => t.toLowerCase());
+    
+    // NLP
+    if (fieldList.includes('NLP') && (
+      paperTags.some(t => t.includes('nlp') || t.includes('natural language')) ||
+      text.includes('language model') || text.includes('translation') || 
+      text.includes('text processing') || text.includes('bert') || text.includes('gpt')
+    )) {
+      trendsByMonth[monthIndex].NLP++;
+    }
+    
+    // Computer Vision
+    if (fieldList.includes('Computer Vision') && (
+      paperTags.some(t => t.includes('vision') || t.includes('computer vision') || t.includes('cv')) ||
+      text.includes('image') || text.includes('visual') || text.includes('detection') ||
+      text.includes('segmentation') || text.includes('recognition')
+    )) {
+      trendsByMonth[monthIndex]['Computer Vision']++;
+    }
+    
+    // LLMs
+    if (fieldList.includes('LLMs') && (
+      paperTags.some(t => t.includes('llm') || t.includes('language model')) ||
+      text.includes('large language model') || text.includes('gpt') || 
+      text.includes('bert') || text.includes('transformer') || text.includes('pretraining')
+    )) {
+      trendsByMonth[monthIndex].LLMs++;
+    }
+    
+    // Agents
+    if (fieldList.includes('Agents') && (
+      paperTags.some(t => t.includes('agent') || t.includes('reinforcement')) ||
+      text.includes('agent') || text.includes('reinforcement learning') ||
+      text.includes('planning') || text.includes('reasoning') || text.includes('decision')
+    )) {
+      trendsByMonth[monthIndex].Agents++;
+    }
+    
+    // Robotics
+    if (fieldList.includes('Robotics') && (
+      paperTags.some(t => t.includes('robot') || t.includes('robotics')) ||
+      text.includes('robot') || text.includes('autonomous') || 
+      text.includes('manipulation') || text.includes('navigation') || text.includes('control')
+    )) {
+      trendsByMonth[monthIndex].Robotics++;
+    }
+    
+    // Healthcare AI
+    if (fieldList.includes('Healthcare AI') && (
+      paperTags.some(t => t.includes('health') || t.includes('medical') || t.includes('healthcare')) ||
+      text.includes('medical') || text.includes('health') || text.includes('diagnosis') ||
+      text.includes('clinical') || text.includes('patient') || text.includes('disease') || text.includes('drug')
+    )) {
+      trendsByMonth[monthIndex]['Healthcare AI']++;
+    }
+  });
+  
+  // Convert to array and sort by date
+  const trends = Object.values(trendsByMonth)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .map(({ monthIndex, date, ...rest }) => rest); // Remove monthIndex and date from output
+  
+  res.json({
+    trends,
+    period,
+    fields: fieldList,
+    totalPapers: filteredPapers.length,
     lastUpdate: lastFetchTime
   });
 });
@@ -611,6 +809,25 @@ app.post('/api/papers/batch', async (req, res) => {
 });
 
 /**
+ * GET /api/papers/total - Get total paper count in database (unfiltered)
+ */
+app.get('/api/papers/total', (req, res) => {
+  // Ensure we're reading the actual count from cache
+  const actualCount = papersCache.length;
+  
+  res.json({
+    total: actualCount,
+    lastUpdate: lastFetchTime,
+    oldestPaperDate: oldestPaperDate,
+    newestPaperDate: lastPaperDate,
+    sourceBreakdown: {
+      arxiv: papersCache.filter(p => p.sourceId === 'arxiv').length,
+      'semantic-scholar': papersCache.filter(p => p.sourceId === 'semantic-scholar').length
+    }
+  });
+});
+
+/**
  * GET /api/health - Health check
  */
 app.get('/api/health', (req, res) => {
@@ -622,9 +839,54 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+/**
+ * Check if port is in use and kill the process if needed (Windows)
+ */
+async function checkAndFreePort(port) {
+  try {
+    // Check if port is in use
+    const { stdout } = await execAsync(`netstat -ano | findstr :${port}`);
+    
+    if (stdout) {
+      // Extract PID from netstat output
+      const lines = stdout.trim().split('\n');
+      const pids = new Set();
+      
+      for (const line of lines) {
+        const match = line.match(/\s+(\d+)\s*$/);
+        if (match && match[1] !== '0') {
+          pids.add(match[1]);
+        }
+      }
+      
+      // Kill all processes using the port
+      for (const pid of pids) {
+        try {
+          console.log(`⚠️ Port ${port} is in use by PID ${pid}, killing process...`);
+          await execAsync(`taskkill /F /PID ${pid}`);
+          console.log(`✅ Killed process ${pid}`);
+          // Wait a moment for the port to be released
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (err) {
+          // Process might have already terminated
+          console.log(`ℹ️ Process ${pid} already terminated or not found`);
+        }
+      }
+    }
+  } catch (err) {
+    // Port is not in use, which is fine
+    if (err.code !== 1) { // Error code 1 means no matches found
+      console.log(`ℹ️ Port ${port} is available`);
+    }
+  }
+}
+
 // Initialize
 async function initialize() {
   console.log('🚀 Starting AI Hub Backend Server...');
+  
+  // Check and free port if needed
+  await checkAndFreePort(PORT);
   
   // Load existing data
   await loadPapersFromDB();
@@ -654,11 +916,32 @@ async function initialize() {
     updatePapers();
   });
 
-  // Start server
-  app.listen(PORT, () => {
+  // Start server with error handling
+  const server = app.listen(PORT, () => {
     console.log(`✅ Server running on http://localhost:${PORT}`);
     console.log(`📚 Serving ${papersCache.length} papers`);
     console.log(`🔄 Auto-refresh every 10 minutes (100 papers per update)`);
+    console.log(`💡 Server will automatically fetch papers in the background`);
+  });
+
+  // Handle server errors gracefully
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use. Attempting to free it...`);
+      checkAndFreePort(PORT).then(() => {
+        console.log('🔄 Retrying server startup...');
+        setTimeout(() => {
+          const retryServer = app.listen(PORT, () => {
+            console.log(`✅ Server running on http://localhost:${PORT}`);
+            console.log(`📚 Serving ${papersCache.length} papers`);
+            console.log(`🔄 Auto-refresh every 10 minutes (100 papers per update)`);
+          });
+        }, 2000);
+      });
+    } else {
+      console.error('❌ Server error:', err);
+      process.exit(1);
+    }
   });
 }
 

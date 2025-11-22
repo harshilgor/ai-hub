@@ -42,6 +42,22 @@ export interface StatsResponse {
   lastUpdate: string;
 }
 
+export interface TrendsResponse {
+  trends: Array<{
+    month: string;
+    NLP: number;
+    'Computer Vision': number;
+    LLMs: number;
+    Agents: number;
+    Robotics: number;
+    'Healthcare AI': number;
+  }>;
+  period: string;
+  fields: string[];
+  totalPapers: number;
+  lastUpdate: string;
+}
+
 /**
  * Fetch papers with optional filters
  */
@@ -91,6 +107,25 @@ export async function fetchPaperStats(period: string = 'all'): Promise<StatsResp
   
   if (!response.ok) {
     throw new Error(`Failed to fetch stats: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch monthly trend data by field
+ * @param period - Time period: '3m', '6m', '12m', 'all'
+ * @param fields - Comma-separated field names or 'all'
+ */
+export async function fetchPaperTrends(period: string = '12m', fields: string = 'all'): Promise<TrendsResponse> {
+  const params = new URLSearchParams();
+  if (period) params.append('period', period);
+  if (fields) params.append('fields', fields);
+  
+  const response = await fetch(`${API_BASE_URL}/papers/trends?${params}`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch trends: ${response.statusText}`);
   }
 
   return response.json();
@@ -158,6 +193,24 @@ export async function fetchPapersBatch(ids: string[]): Promise<Paper[]> {
 
   const data = await response.json();
   return data.papers || [];
+}
+
+/**
+ * Get total paper count in database (unfiltered)
+ */
+export async function getTotalPaperCount(): Promise<{
+  total: number;
+  lastUpdate: string;
+  oldestPaperDate?: string;
+  newestPaperDate?: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/papers/total`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get total count: ${response.statusText}`);
+  }
+
+  return response.json();
 }
 
 /**

@@ -304,9 +304,16 @@ export default function ResearchPapers() {
                   {/* Header */}
                   <div className="flex items-start justify-between mb-3 sm:mb-4">
                     <div className="flex-1 pr-2 sm:pr-4">
-                      <h3 className="text-lg sm:text-xl md:text-2xl font-bold mb-1 sm:mb-2 hover:text-primary-light dark:hover:text-primary-dark cursor-pointer transition-colors leading-tight">
-                        {paper.title}
-                      </h3>
+                      <a
+                        href={paper.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block"
+                      >
+                        <h3 className="text-lg sm:text-xl md:text-2xl font-bold mb-1 sm:mb-2 hover:text-primary-light dark:hover:text-primary-dark cursor-pointer transition-colors leading-tight">
+                          {paper.title}
+                        </h3>
+                      </a>
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary">
                         <span className="truncate max-w-[200px] sm:max-w-none">{paper.authors.join(', ')}</span>
                         <span>•</span>
@@ -383,20 +390,20 @@ export default function ResearchPapers() {
                       href={paper.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-light dark:bg-primary-dark text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-xs whitespace-nowrap"
+                      className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-primary-light dark:bg-primary-dark text-white rounded-lg hover:scale-105 transition-all font-medium text-xs sm:text-sm whitespace-nowrap shadow-md"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      Read Paper
+                      <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      View Full Paper
                     </a>
                     {paper.pdfLink && (
                       <a
                         href={paper.pdfLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 glass-card border border-light-border dark:border-dark-border rounded-lg hover:opacity-90 transition-opacity text-xs whitespace-nowrap"
+                        className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 glass-card border border-light-border dark:border-dark-border rounded-lg hover:scale-105 transition-all text-xs sm:text-sm whitespace-nowrap"
                       >
-                        <FileText className="w-3.5 h-3.5" />
-                        PDF
+                        <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        Download PDF
                       </a>
                     )}
                     <button className="flex items-center gap-1.5 px-3 py-1.5 glass-card border border-light-border dark:border-dark-border rounded-lg hover:opacity-90 transition-opacity text-xs whitespace-nowrap">

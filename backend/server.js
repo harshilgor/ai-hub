@@ -218,24 +218,16 @@ async function updatePapers() {
   try {
     const currentYear = new Date().getFullYear();
     
-    // Always fetch from at least the last 48 hours to ensure we get fresh papers
-    // This prevents the cache from getting stuck with old papers
-    const twoDaysAgo = new Date();
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-    twoDaysAgo.setHours(0, 0, 0, 0); // Start of day 2 days ago
+    // ALWAYS fetch from the last 3 days, regardless of lastPaperDate
+    // This ensures we always get the latest papers, even if lastPaperDate is stuck
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    threeDaysAgo.setHours(0, 0, 0, 0); // Start of day 3 days ago
     
-    // Calculate date threshold - always include last 48 hours minimum
-    let dateThreshold = twoDaysAgo;
-    if (papersCache.length > 0 && lastPaperDate) {
-      const newestDate = new Date(lastPaperDate);
-      // Use the newer of: last 48 hours or newest paper date minus 1 day (to catch papers from same day)
-      // But never go beyond 2 days to ensure we always get fresh papers
-      const oneDayAfterNewest = new Date(newestDate);
-      oneDayAfterNewest.setDate(oneDayAfterNewest.getDate() - 1);
-      dateThreshold = oneDayAfterNewest > twoDaysAgo ? oneDayAfterNewest : twoDaysAgo;
-    }
+    // Use last 3 days as the threshold - ignore lastPaperDate to prevent getting stuck
+    let dateThreshold = threeDaysAgo;
     
-    console.log(`📅 Fetching papers from: ${dateThreshold.toISOString()} (last 48 hours minimum)`);
+    console.log(`📅 Fetching papers from: ${dateThreshold.toISOString()} (always last 3 days, ignoring lastPaperDate to prevent stuck state)`);
     
     // Fetch from both sources in parallel (both are primary sources)
     console.log('🔍 Fetching from Semantic Scholar and arXiv in parallel...');

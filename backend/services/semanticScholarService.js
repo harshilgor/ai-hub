@@ -3,6 +3,39 @@ import axios from 'axios';
 const SEMANTIC_SCHOLAR_API = 'https://api.semanticscholar.org/graph/v1';
 
 /**
+ * Rate limiter for Semantic Scholar API - ensures 1 request per second
+ */
+class RateLimiter {
+  constructor(requestsPerSecond = 1) {
+    this.requestsPerSecond = requestsPerSecond;
+    this.minInterval = 1000 / requestsPerSecond; // 1000ms for 1 req/sec
+    this.lastRequestTime = 0;
+    this.queue = [];
+    this.processing = false;
+  }
+
+  async waitForNextSlot() {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    if (timeSinceLastRequest < this.minInterval) {
+      const waitTime = this.minInterval - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequestTime = Date.now();
+  }
+
+  async execute(requestFn) {
+    await this.waitForNextSlot();
+    return await requestFn();
+  }
+}
+
+// Create a singleton rate limiter instance
+const rateLimiter = new RateLimiter(1); // 1 request per second
+
+/**
  * Enrich paper data with Semantic Scholar information
  * @param {Object} paper - Paper object from arXiv
  */
@@ -11,13 +44,15 @@ export async function enrichPaperWithSemanticScholar(paper) {
     // Search by arXiv ID or title
     const searchUrl = `${SEMANTIC_SCHOLAR_API}/paper/arXiv:${paper.arxivId}`;
     
-    const response = await axios.get(searchUrl, {
-      params: {
-        fields: 'title,authors,abstract,year,citationCount,influentialCitationCount,references,citations,venue,externalIds'
-      },
-      headers: {
-        'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
-      }
+    const response = await rateLimiter.execute(async () => {
+      return await axios.get(searchUrl, {
+        params: {
+          fields: 'title,authors,abstract,year,citationCount,influentialCitationCount,references,citations,venue,externalIds'
+        },
+        headers: {
+          'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
+        }
+      });
     });
 
     const data = response.data;
@@ -43,15 +78,17 @@ export async function enrichPaperWithSemanticScholar(paper) {
  */
 export async function searchSemanticScholar(query, limit = 50) {
   try {
-    const response = await axios.get(`${SEMANTIC_SCHOLAR_API}/paper/search`, {
-      params: {
-        query: query,
-        limit: limit,
-        fields: 'title,authors,abstract,year,citationCount,venue,externalIds'
-      },
-      headers: {
-        'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
-      }
+    const response = await rateLimiter.execute(async () => {
+      return await axios.get(`${SEMANTIC_SCHOLAR_API}/paper/search`, {
+        params: {
+          query: query,
+          limit: limit,
+          fields: 'title,authors,abstract,year,citationCount,venue,externalIds'
+        },
+        headers: {
+          'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
+        }
+      });
     });
 
     return response.data.data || [];
@@ -142,17 +179,19 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
     for (const query of aiQueries) {
       try {
         // Use offset to get different papers each time
-        const response = await axios.get(`${SEMANTIC_SCHOLAR_API}/paper/search`, {
-          params: {
-            query: query,
-            year: `${targetYear},${targetYear + 1}`, // Current year and next
-            limit: Math.ceil(limit / aiQueries.length) + 20, // Get more to filter by date
-            offset: offset,
-            fields: 'paperId,title,authors,year,abstract,citationCount,influentialCitationCount,venue,externalIds,openAccessPdf,publicationDate,fieldsOfStudy'
-          },
-          headers: {
-            'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
-          }
+        const response = await rateLimiter.execute(async () => {
+          return await axios.get(`${SEMANTIC_SCHOLAR_API}/paper/search`, {
+            params: {
+              query: query,
+              year: `${targetYear},${targetYear + 1}`, // Current year and next
+              limit: Math.ceil(limit / aiQueries.length) + 20, // Get more to filter by date
+              offset: offset,
+              fields: 'paperId,title,authors,year,abstract,citationCount,influentialCitationCount,venue,externalIds,openAccessPdf,publicationDate,fieldsOfStudy'
+            },
+            headers: {
+              'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
+            }
+          });
         });
 
         if (response.data && response.data.data) {
@@ -179,9 +218,7 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
       
       // Increment offset for next query to get different results
       offset += 10;
-      
-      // Rate limiting - wait 200ms between requests
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Rate limiter already handles 1 req/sec, no need for additional delay
     }
 
     // Remove duplicates by paperId
@@ -221,19 +258,21 @@ export async function fetchPapersBatch(paperIds) {
       const batch = paperIds.slice(i, i + batchSize);
       
       try {
-        const response = await axios.post(
-          `${SEMANTIC_SCHOLAR_API}/paper/batch`,
-          { ids: batch },
-          {
-            params: {
-              fields: 'title,authors,year,abstract,citationCount,influentialCitationCount,venue,externalIds,openAccessPdf,publicationDate,referenceCount,citationCount,fieldsOfStudy'
-            },
-            headers: {
-              'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || '',
-              'Content-Type': 'application/json'
+        const response = await rateLimiter.execute(async () => {
+          return await axios.post(
+            `${SEMANTIC_SCHOLAR_API}/paper/batch`,
+            { ids: batch },
+            {
+              params: {
+                fields: 'title,authors,year,abstract,citationCount,influentialCitationCount,venue,externalIds,openAccessPdf,publicationDate,referenceCount,citationCount,fieldsOfStudy'
+              },
+              headers: {
+                'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || '',
+                'Content-Type': 'application/json'
+              }
             }
-          }
-        );
+          );
+        });
 
         if (response.data) {
           const results = Array.isArray(response.data) ? response.data : [response.data];
@@ -243,11 +282,7 @@ export async function fetchPapersBatch(paperIds) {
         console.error(`⚠️ Error fetching batch ${i}-${i + batchSize}:`, batchError.message);
         // Continue with next batch
       }
-      
-      // Rate limiting between batches
-      if (i + batchSize < paperIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
+      // Rate limiter already handles 1 req/sec, no need for additional delay
     }
 
     return batches;
@@ -266,13 +301,15 @@ export async function getPaperAutocomplete(query) {
       return [];
     }
 
-    const response = await axios.get(`${SEMANTIC_SCHOLAR_API}/paper/autocomplete`, {
-      params: {
-        query: query
-      },
-      headers: {
-        'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
-      }
+    const response = await rateLimiter.execute(async () => {
+      return await axios.get(`${SEMANTIC_SCHOLAR_API}/paper/autocomplete`, {
+        params: {
+          query: query
+        },
+        headers: {
+          'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY || ''
+        }
+      });
     });
 
     // The API returns an array of paper objects with minimal info

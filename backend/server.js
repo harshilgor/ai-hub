@@ -218,21 +218,24 @@ async function updatePapers() {
   try {
     const currentYear = new Date().getFullYear();
     
-    // Always fetch from at least the last 7 days to ensure we get papers
+    // Always fetch from at least the last 48 hours to ensure we get fresh papers
     // This prevents the cache from getting stuck with old papers
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    twoDaysAgo.setHours(0, 0, 0, 0); // Start of day 2 days ago
     
-    // Calculate date threshold - prefer newer papers but always get last 7 days
-    let dateThreshold = sevenDaysAgo;
+    // Calculate date threshold - always include last 48 hours minimum
+    let dateThreshold = twoDaysAgo;
     if (papersCache.length > 0 && lastPaperDate) {
       const newestDate = new Date(lastPaperDate);
-      // Use the newer of: last 7 days or newest paper date
-      // But never go beyond 7 days to ensure we always get fresh papers
-      dateThreshold = newestDate > sevenDaysAgo ? newestDate : sevenDaysAgo;
+      // Use the newer of: last 48 hours or newest paper date minus 1 day (to catch papers from same day)
+      // But never go beyond 2 days to ensure we always get fresh papers
+      const oneDayAfterNewest = new Date(newestDate);
+      oneDayAfterNewest.setDate(oneDayAfterNewest.getDate() - 1);
+      dateThreshold = oneDayAfterNewest > twoDaysAgo ? oneDayAfterNewest : twoDaysAgo;
     }
     
-    console.log(`📅 Fetching papers from: ${dateThreshold.toISOString()} (last 7 days minimum)`);
+    console.log(`📅 Fetching papers from: ${dateThreshold.toISOString()} (last 48 hours minimum)`);
     
     // Fetch from both sources in parallel (both are primary sources)
     console.log('🔍 Fetching from Semantic Scholar and arXiv in parallel...');
@@ -241,14 +244,21 @@ async function updatePapers() {
     let attempts = 0;
     const maxAttempts = 2;
     
-    // Try fetching with date threshold, if no papers found, expand the window
-    while (papers.length === 0 && attempts < maxAttempts) {
+    // Try fetching with date threshold, if no NEW papers found, expand the window
+    let trulyNewPapers = [];
+    let attempts = 0;
+    const maxAttempts = 3; // Try up to 3 times with expanding windows
+    
+    while (trulyNewPapers.length === 0 && attempts < maxAttempts) {
       const hoursBack = Math.ceil((Date.now() - dateThreshold.getTime()) / (1000 * 60 * 60));
+      console.log(`🔍 Attempt ${attempts + 1}: Fetching papers from last ${Math.round(hoursBack / 24)} days (threshold: ${dateThreshold.toISOString()})`);
       
       const [ssResult, arxivResult] = await Promise.allSettled([
         fetchLatestPapersFromSemanticScholar(100, currentYear, dateThreshold),
         fetchArXivLatest(100, dateThreshold)
       ]);
+      
+      let papers = [];
       
       // Process Semantic Scholar results
       if (ssResult.status === 'fulfilled' && ssResult.value.length > 0) {
@@ -282,54 +292,86 @@ async function updatePapers() {
       } else if (arxivResult.status === 'rejected') {
         console.error('⚠️ arXiv fetch failed:', arxivResult.reason?.message);
       }
+
+      if (papers.length === 0) {
+        console.log('⚠️ No papers fetched from any source');
+        // Expand date window and try again
+        if (attempts < maxAttempts - 1) {
+          attempts++;
+          if (attempts === 1) {
+            // First expansion: last 14 days
+            dateThreshold = new Date();
+            dateThreshold.setDate(dateThreshold.getDate() - 14);
+            console.log(`📅 Expanding search to last 14 days...`);
+          } else {
+            // Second expansion: last 30 days
+            dateThreshold = new Date();
+            dateThreshold.setDate(dateThreshold.getDate() - 30);
+            console.log(`📅 Expanding search to last 30 days...`);
+          }
+          continue;
+        } else {
+          console.log('⚠️ No papers fetched after all attempts');
+          return;
+        }
+      }
+
+      console.log(`📦 Total papers before deduplication: ${papers.length}`);
       
-      // If no papers found, expand the date window
-      if (papers.length === 0 && attempts < maxAttempts - 1) {
+      // Remove duplicates within the new batch
+      const uniqueNewPapers = removeDuplicatePapers(papers);
+      console.log(`📝 Removed ${papers.length - uniqueNewPapers.length} duplicates from new batch`);
+      console.log(`📊 New unique papers: ${uniqueNewPapers.length}`);
+
+      // Enrich arXiv papers with Semantic Scholar citation data
+      const enrichedNewPapers = await enrichPapersWithCitations(uniqueNewPapers);
+
+      // Merge with existing cache - check for duplicates against existing papers
+      const existingIds = new Set();
+      papersCache.forEach(p => {
+        if (p.arxivId) existingIds.add(`arxiv:${p.arxivId}`);
+        if (p.semanticScholarId) existingIds.add(`ss:${p.semanticScholarId}`);
+        existingIds.add(`title:${normalizeTitle(p.title)}`);
+      });
+
+      // Filter out papers that already exist in cache
+      trulyNewPapers = enrichedNewPapers.filter(p => {
+        const arxivId = p.arxivId || extractArxivId(p.link);
+        if (arxivId && existingIds.has(`arxiv:${arxivId}`)) return false;
+        if (p.semanticScholarId && existingIds.has(`ss:${p.semanticScholarId}`)) return false;
+        const titleKey = normalizeTitle(p.title);
+        if (existingIds.has(`title:${titleKey}`)) return false;
+        return true;
+      });
+
+      console.log(`🆕 Found ${trulyNewPapers.length} truly new papers (${enrichedNewPapers.length - trulyNewPapers.length} were already in cache)`);
+      
+      // If no new papers found, expand the date window and try again
+      if (trulyNewPapers.length === 0 && attempts < maxAttempts - 1) {
         attempts++;
-        // Expand to last 30 days
-        dateThreshold = new Date();
-        dateThreshold.setDate(dateThreshold.getDate() - 30);
-        console.log(`⚠️ No papers found, expanding search to last 30 days...`);
+        if (attempts === 1) {
+          // First expansion: last 14 days
+          dateThreshold = new Date();
+          dateThreshold.setDate(dateThreshold.getDate() - 14);
+          console.log(`⚠️ No new papers found, expanding search to last 14 days...`);
+        } else {
+          // Second expansion: last 30 days
+          dateThreshold = new Date();
+          dateThreshold.setDate(dateThreshold.getDate() - 30);
+          console.log(`⚠️ No new papers found, expanding search to last 30 days...`);
+        }
       } else {
         break;
       }
     }
 
-    if (papers.length === 0) {
-      console.log('⚠️ No papers fetched from any source after expanding search window');
-      // Don't return - keep existing cache, but log the issue
+    if (trulyNewPapers.length === 0) {
+      console.log('⚠️ No new papers found after expanding search window - keeping existing cache');
+      // Still update lastFetchTime to show we tried
+      lastFetchTime = new Date().toISOString();
+      await savePapersToDP();
       return;
     }
-
-    console.log(`📦 Total papers before deduplication: ${papers.length}`);
-    
-    // Remove duplicates within the new batch
-    const uniqueNewPapers = removeDuplicatePapers(papers);
-    console.log(`📝 Removed ${papers.length - uniqueNewPapers.length} duplicates from new batch`);
-    console.log(`📊 New unique papers: ${uniqueNewPapers.length}`);
-
-    // Enrich arXiv papers with Semantic Scholar citation data
-    const enrichedNewPapers = await enrichPapersWithCitations(uniqueNewPapers);
-
-    // Merge with existing cache - check for duplicates against existing papers
-    const existingIds = new Set();
-    papersCache.forEach(p => {
-      if (p.arxivId) existingIds.add(`arxiv:${p.arxivId}`);
-      if (p.semanticScholarId) existingIds.add(`ss:${p.semanticScholarId}`);
-      existingIds.add(`title:${normalizeTitle(p.title)}`);
-    });
-
-    // Filter out papers that already exist in cache
-    const trulyNewPapers = enrichedNewPapers.filter(p => {
-      const arxivId = p.arxivId || extractArxivId(p.link);
-      if (arxivId && existingIds.has(`arxiv:${arxivId}`)) return false;
-      if (p.semanticScholarId && existingIds.has(`ss:${p.semanticScholarId}`)) return false;
-      const titleKey = normalizeTitle(p.title);
-      if (existingIds.has(`title:${titleKey}`)) return false;
-      return true;
-    });
-
-    console.log(`🆕 Found ${trulyNewPapers.length} truly new papers (${enrichedNewPapers.length - trulyNewPapers.length} were already in cache)`);
 
     // Merge: add new papers to existing cache
     const mergedPapers = [...trulyNewPapers, ...papersCache];

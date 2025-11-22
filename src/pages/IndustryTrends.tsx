@@ -258,7 +258,7 @@ export default function IndustryTrends() {
           >
             <h3 className="text-xl font-bold mb-8">Active Investors</h3>
             <div className="space-y-3">
-              {['Sequoia Capital', 'Andreessen Horowitz', 'SoftBank Vision', 'General Catalyst', 'Accel'].map((investor) => (
+              {['Sequoia Capital', 'Andreessen Horowitz', 'SoftBank Vision', 'General Catalyst', 'Accel'].map((investor, index) => (
                 <div
                   key={investor}
                   className="flex items-center justify-between py-3 border-b border-light-border dark:border-dark-border last:border-0"

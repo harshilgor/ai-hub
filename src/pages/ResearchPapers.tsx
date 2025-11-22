@@ -8,12 +8,15 @@ export default function ResearchPapers() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedVenue, setSelectedVenue] = useState('');
+  const [selectedSource, setSelectedSource] = useState('');
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [industryStats, setIndustryStats] = useState<Record<string, number>>({});
+  const [sourceStats, setSourceStats] = useState<{arxiv: number; 'semantic-scholar': number; total: number} | null>(null);
+  const [statsPeriod, setStatsPeriod] = useState<string>('all');
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -25,7 +28,7 @@ export default function ResearchPapers() {
   useEffect(() => {
     loadPapers();
     loadStats();
-  }, [selectedCategory, selectedVenue]);
+  }, [selectedCategory, selectedVenue, selectedSource]);
 
   // Debounced search
   useEffect(() => {
@@ -84,11 +87,15 @@ export default function ResearchPapers() {
         category: selectedCategory || undefined,
         venue: selectedVenue || undefined,
         search: searchTerm || undefined,
+        source: selectedSource || undefined,
         limit: 50
       });
       
       setPapers(response.papers);
       setLastUpdate(response.lastUpdate);
+      if (response.sources) {
+        setSourceStats(response.sources);
+      }
     } catch (err) {
       setError('Failed to load papers. Backend server may not be running.');
       console.error('Error loading papers:', err);
@@ -101,12 +108,17 @@ export default function ResearchPapers() {
 
   async function loadStats() {
     try {
-      const stats = await fetchPaperStats();
+      const stats = await fetchPaperStats(statsPeriod);
       setIndustryStats(stats.industryStats);
     } catch (err) {
       console.error('Error loading stats:', err);
     }
   }
+
+  // Reload stats when period changes
+  useEffect(() => {
+    loadStats();
+  }, [statsPeriod]);
 
   async function handleRefresh() {
     try {
@@ -135,8 +147,8 @@ export default function ResearchPapers() {
   const maxCount = topCategories.length > 0 ? Math.max(...topCategories.map(c => c.count)) : 1;
 
   return (
-    <div className="min-h-screen">
-      <div className="w-full max-w-[95vw] sm:max-w-[90vw] md:max-w-[85vw] lg:max-w-[1400px] xl:max-w-[1600px] 2xl:max-w-[1800px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12 py-4 sm:py-6 md:py-8">
+    <div className="min-h-screen overflow-x-hidden">
+      <div className="w-full max-w-[100vw] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 py-4 sm:py-6 md:py-8">
         {/* Header with Filters */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -144,23 +156,28 @@ export default function ResearchPapers() {
           className="mb-4 sm:mb-6 md:mb-8"
         >
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
-            <div className="flex-shrink-0 w-full lg:w-auto">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-1 sm:mb-2">Latest Research Papers</h1>
-              <p className="text-xs sm:text-sm md:text-base text-light-text-secondary dark:text-dark-text-secondary">
+            <div className="flex-shrink-0 w-full lg:flex-1 lg:min-w-0">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-4xl font-bold mb-1 sm:mb-2 break-words">Latest Research Papers</h1>
+              <p className="text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary break-words">
                 Real-time updates from arXiv and Semantic Scholar
+                {sourceStats && (
+                  <span className="ml-1 sm:ml-2 text-xs">
+                    ({sourceStats.arxiv} arXiv, {sourceStats['semantic-scholar']} SS)
+                  </span>
+                )}
                 {lastUpdate && (
-                  <span className="ml-2 text-xs">
-                    • Last updated: {new Date(lastUpdate).toLocaleString()}
+                  <span className="ml-1 sm:ml-2 text-xs">
+                    • {new Date(lastUpdate).toLocaleDateString()}
                   </span>
                 )}
               </p>
             </div>
 
-            {/* Filter Bar - Compact */}
-            <div className="glass-card rounded-xl p-2 sm:p-3 border border-light-border dark:border-dark-border flex-shrink-0 w-full lg:w-auto">
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                <div className="relative w-full sm:w-56 md:w-64 lg:w-72">
-                  <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-light-text-secondary dark:text-dark-text-secondary z-10" />
+            {/* Filter Bar - Compact and Contained */}
+            <div className="glass-card rounded-lg p-2 sm:p-2.5 border border-light-border dark:border-dark-border w-full lg:w-auto lg:flex-shrink-0 lg:max-w-md">
+              <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+                <div className="relative flex-1 sm:flex-initial sm:w-48 md:w-52 min-w-0">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-light-text-secondary dark:text-dark-text-secondary z-10 pointer-events-none" />
                   <input
                     ref={searchInputRef}
                     type="text"
@@ -168,7 +185,7 @@ export default function ResearchPapers() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     onFocus={() => searchTerm.length >= 2 && autocompleteSuggestions.length > 0 && setShowAutocomplete(true)}
-                    className="w-full pl-7 sm:pl-9 pr-2 sm:pr-3 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none"
+                    className="w-full pl-8 pr-2 py-1.5 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none"
                   />
                   
                   {/* Autocomplete dropdown */}
@@ -198,7 +215,7 @@ export default function ResearchPapers() {
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none"
+                  className="px-2 py-1.5 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none flex-shrink-0 sm:w-auto min-w-[120px]"
                 >
                   <option value="">All Categories</option>
                   {aiCategories.map(category => (
@@ -209,12 +226,23 @@ export default function ResearchPapers() {
                 <select
                   value={selectedVenue}
                   onChange={(e) => setSelectedVenue(e.target.value)}
-                  className="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none"
+                  className="px-2 py-1.5 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none flex-shrink-0 sm:w-auto min-w-[120px]"
                 >
                   <option value="">All Venues</option>
                   {venues.map(venue => (
                     <option key={venue} value={venue}>{venue}</option>
                   ))}
+                </select>
+
+                <select
+                  value={selectedSource}
+                  onChange={(e) => setSelectedSource(e.target.value)}
+                  className="px-2 py-1.5 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none flex-shrink-0 sm:w-auto min-w-[110px]"
+                >
+                  <option value="">All Sources</option>
+                  <option value="arxiv">📄 arXiv</option>
+                  <option value="semantic-scholar">🔬 SS</option>
+                  <option value="both">Both</option>
                 </select>
 
                 <button
@@ -282,6 +310,14 @@ export default function ResearchPapers() {
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary">
                         <span className="truncate max-w-[200px] sm:max-w-none">{paper.authors.join(', ')}</span>
                         <span>•</span>
+                        <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-xs font-medium ${
+                          paper.sourceId === 'arxiv'
+                            ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                            : 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200'
+                        }`}>
+                          {paper.sourceId === 'arxiv' ? '📄 arXiv' : '🔬 Semantic Scholar'}
+                        </span>
+                        <span>•</span>
                         <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-insight-light/10 dark:bg-insight-dark/10 text-insight-light dark:text-insight-dark font-medium text-xs">
                           {paper.venue}
                         </span>
@@ -342,14 +378,14 @@ export default function ResearchPapers() {
                   )}
 
                   {/* Actions */}
-                  <div className="flex flex-wrap gap-2 sm:gap-3">
+                  <div className="flex flex-wrap gap-2 items-center">
                     <a
                       href={paper.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-primary-light dark:bg-primary-dark text-white rounded-lg hover:scale-105 transition-transform font-medium text-xs sm:text-sm"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-light dark:bg-primary-dark text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-xs whitespace-nowrap"
                     >
-                      <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <ExternalLink className="w-3.5 h-3.5" />
                       Read Paper
                     </a>
                     {paper.pdfLink && (
@@ -357,19 +393,19 @@ export default function ResearchPapers() {
                         href={paper.pdfLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 glass-card border border-light-border dark:border-dark-border rounded-lg hover:scale-105 transition-transform text-xs sm:text-sm"
+                        className="flex items-center gap-1.5 px-3 py-1.5 glass-card border border-light-border dark:border-dark-border rounded-lg hover:opacity-90 transition-opacity text-xs whitespace-nowrap"
                       >
-                        <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <FileText className="w-3.5 h-3.5" />
                         PDF
                       </a>
                     )}
-                    <button className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 glass-card border border-light-border dark:border-dark-border rounded-lg hover:scale-105 transition-transform text-xs sm:text-sm">
-                      <PlusCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <button className="flex items-center gap-1.5 px-3 py-1.5 glass-card border border-light-border dark:border-dark-border rounded-lg hover:opacity-90 transition-opacity text-xs whitespace-nowrap">
+                      <PlusCircle className="w-3.5 h-3.5" />
                       Add to Graph
                     </button>
-                    <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary ml-auto">
-                      <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
-                      <span>{paper.citations} citations</span>
+                    <div className="flex items-center gap-1.5 text-xs text-light-text-secondary dark:text-dark-text-secondary ml-auto">
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>{paper.citations}</span>
                     </div>
                   </div>
                 </motion.article>
@@ -379,20 +415,77 @@ export default function ResearchPapers() {
           </main>
 
           {/* Right Sidebar */}
-          <aside className="lg:col-span-4">
-            <div className="space-y-4 sm:space-y-5 md:space-y-6 sticky top-20 sm:top-24">
+          <aside className="lg:col-span-4 w-full min-w-0">
+            <div className="space-y-4 sm:space-y-5 md:space-y-6 sticky top-20 sm:top-24 w-full">
+              {/* Papers by Source */}
+              {sourceStats && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="glass-card rounded-xl p-4 sm:p-5 md:p-6 border border-light-border dark:border-dark-border"
+                >
+                  <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-primary-light dark:text-primary-dark" />
+                    <h3 className="font-semibold text-base sm:text-lg">Papers by Source</h3>
+                  </div>
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className="flex items-center justify-between p-2 sm:p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">📄</span>
+                        <span className="font-medium text-xs sm:text-sm">arXiv</span>
+                      </div>
+                      <span className="text-base sm:text-lg font-bold text-blue-600 dark:text-blue-400">
+                        {sourceStats.arxiv}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 sm:p-3 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🔬</span>
+                        <span className="font-medium text-xs sm:text-sm">Semantic Scholar</span>
+                      </div>
+                      <span className="text-base sm:text-lg font-bold text-purple-600 dark:text-purple-400">
+                        {sourceStats['semantic-scholar']}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 sm:p-3 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border border-light-border dark:border-dark-border">
+                      <span className="font-semibold text-xs sm:text-sm">Total</span>
+                      <span className="text-base sm:text-lg font-bold text-primary-light dark:text-primary-dark">
+                        {sourceStats.total}
+                      </span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Research Activity by Industry */}
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="glass-card rounded-xl p-4 sm:p-5 md:p-6 border border-light-border dark:border-dark-border"
               >
-                <div className="flex items-center gap-2 mb-3 sm:mb-4">
-                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-insight-light dark:text-insight-dark" />
-                  <h3 className="font-semibold text-base sm:text-lg">Research Activity by Industry</h3>
+                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-insight-light dark:text-insight-dark" />
+                    <h3 className="font-semibold text-base sm:text-lg">Research Activity by Industry</h3>
+                  </div>
+                  <select
+                    value={statsPeriod}
+                    onChange={(e) => setStatsPeriod(e.target.value)}
+                    className="px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none"
+                  >
+                    <option value="all">All Time</option>
+                    <option value="year">This Year</option>
+                    <option value="quarter">This Quarter</option>
+                    <option value="month">This Month</option>
+                  </select>
                 </div>
                 <p className="text-xs sm:text-sm text-light-text-secondary dark:text-dark-text-secondary mb-3 sm:mb-4">
                   Industries seeing the most research papers
+                  {statsPeriod !== 'all' && (
+                    <span className="ml-1 text-primary-light dark:text-primary-dark">
+                      ({statsPeriod === 'month' ? 'This Month' : statsPeriod === 'quarter' ? 'This Quarter' : 'This Year'})
+                    </span>
+                  )}
                 </p>
                 
                 <div className="space-y-2 sm:space-y-3">

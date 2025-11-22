@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
+import LandingPage from './pages/LandingPage';
 import HomePage from './pages/HomePage';
 import IndustryInsights from './pages/IndustryInsights';
 import YCExplorer from './pages/YCExplorer';
@@ -14,7 +15,8 @@ function App() {
       <div className="min-h-screen bg-light-bg dark:bg-dark-bg text-light-text dark:text-dark-text transition-colors duration-200">
         <Header />
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/home" element={<HomePage />} />
           <Route path="/industry-insights" element={<IndustryInsights />} />
           <Route path="/yc-explorer" element={<YCExplorer />} />
           <Route path="/trends" element={<TrendsDashboard />} />

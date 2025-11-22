@@ -7,7 +7,7 @@ export default function Header() {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const navItems = [
-    { path: '/', icon: Home, label: 'Feed' },
+    { path: '/home', icon: Home, label: 'Home' },
     { path: '/industry-insights', icon: Building2, label: 'Industry Insights' },
     { path: '/trends', icon: TrendingUp, label: 'Trends' },
     { path: '/research', icon: FileText, label: 'Research' },

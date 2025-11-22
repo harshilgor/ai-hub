@@ -19,11 +19,18 @@ export interface Paper {
   year?: number;
   date?: string;
   relatedStartups: string[];
+  source?: string;
+  sourceId?: string;
 }
 
 export interface PapersResponse {
   papers: Paper[];
   total: number;
+  sources?: {
+    arxiv: number;
+    'semantic-scholar': number;
+    total: number;
+  };
   lastUpdate: string;
   hasMore: boolean;
 }
@@ -31,6 +38,7 @@ export interface PapersResponse {
 export interface StatsResponse {
   industryStats: Record<string, number>;
   totalPapers: number;
+  period?: string;
   lastUpdate: string;
 }
 
@@ -41,6 +49,7 @@ export async function fetchPapers(options: {
   category?: string;
   venue?: string;
   search?: string;
+  source?: string;
   limit?: number;
   offset?: number;
 } = {}): Promise<PapersResponse> {
@@ -49,6 +58,7 @@ export async function fetchPapers(options: {
   if (options.category) params.append('category', options.category);
   if (options.venue) params.append('venue', options.venue);
   if (options.search) params.append('search', options.search);
+  if (options.source) params.append('source', options.source);
   if (options.limit) params.append('limit', options.limit.toString());
   if (options.offset) params.append('offset', options.offset.toString());
 
@@ -63,9 +73,13 @@ export async function fetchPapers(options: {
 
 /**
  * Fetch paper statistics by industry
+ * @param period - Time period: 'all', 'month', 'quarter', 'year'
  */
-export async function fetchPaperStats(): Promise<StatsResponse> {
-  const response = await fetch(`${API_BASE_URL}/papers/stats`);
+export async function fetchPaperStats(period: string = 'all'): Promise<StatsResponse> {
+  const params = new URLSearchParams();
+  if (period) params.append('period', period);
+  
+  const response = await fetch(`${API_BASE_URL}/papers/stats?${params}`);
   
   if (!response.ok) {
     throw new Error(`Failed to fetch stats: ${response.statusText}`);

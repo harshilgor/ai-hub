@@ -101,10 +101,14 @@ export async function getTrendingPapers(limit = 20) {
 /**
  * Fetch latest AI papers from Semantic Scholar
  * Uses search with year filter to get recent papers
+ * @param {number} limit - Maximum number of papers to fetch
+ * @param {number} year - Year to filter by
+ * @param {Date} dateThreshold - Only fetch papers newer than this date (optional)
  */
-export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2024) {
+export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2024, dateThreshold = null) {
   try {
-    const aiQueries = [
+    // Rotate queries to get variety - use different queries each time
+    const allQueries = [
       'artificial intelligence',
       'machine learning',
       'deep learning',
@@ -112,21 +116,38 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
       'computer vision',
       'natural language processing',
       'large language models',
-      'reinforcement learning'
+      'reinforcement learning',
+      'transformer models',
+      'generative AI',
+      'diffusion models',
+      'foundation models',
+      'multimodal learning',
+      'self-supervised learning',
+      'few-shot learning'
     ];
+    
+    // Rotate queries based on time to get different results
+    const hourOfDay = new Date().getHours();
+    const startIndex = hourOfDay % allQueries.length;
+    const aiQueries = allQueries.slice(startIndex, startIndex + 8).concat(
+      allQueries.slice(0, Math.max(0, 8 - (allQueries.length - startIndex)))
+    );
 
     const allPapers = [];
     const currentYear = new Date().getFullYear();
     const targetYear = year || currentYear;
     
-    // Search for each AI topic
+    // Search for each AI topic with offset to get different papers
+    let offset = 0;
     for (const query of aiQueries) {
       try {
+        // Use offset to get different papers each time
         const response = await axios.get(`${SEMANTIC_SCHOLAR_API}/paper/search`, {
           params: {
             query: query,
             year: `${targetYear},${targetYear + 1}`, // Current year and next
-            limit: Math.ceil(limit / aiQueries.length),
+            limit: Math.ceil(limit / aiQueries.length) + 20, // Get more to filter by date
+            offset: offset,
             fields: 'paperId,title,authors,year,abstract,citationCount,influentialCitationCount,venue,externalIds,openAccessPdf,publicationDate,fieldsOfStudy'
           },
           headers: {
@@ -135,12 +156,29 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
         });
 
         if (response.data && response.data.data) {
-          allPapers.push(...response.data.data);
+          let papers = response.data.data;
+          
+          // Filter by date threshold if provided, but be lenient (allow papers within 1 day of threshold)
+          if (dateThreshold) {
+            const thresholdDate = new Date(dateThreshold);
+            // Allow papers from 1 day before threshold to account for timezone differences
+            thresholdDate.setDate(thresholdDate.getDate() - 1);
+            
+            papers = papers.filter(p => {
+              const paperDate = new Date(p.publicationDate || (p.year ? `${p.year}-01-01` : 0));
+              return paperDate >= thresholdDate;
+            });
+          }
+          
+          allPapers.push(...papers);
         }
       } catch (queryError) {
         console.error(`⚠️ Error searching for "${query}":`, queryError.message);
         // Continue with other queries
       }
+      
+      // Increment offset for next query to get different results
+      offset += 10;
       
       // Rate limiting - wait 200ms between requests
       await new Promise(resolve => setTimeout(resolve, 200));

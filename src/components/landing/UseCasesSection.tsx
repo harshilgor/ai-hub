@@ -62,24 +62,24 @@ export default function UseCasesSection() {
   ];
 
   return (
-    <section className="py-20 bg-gray-50 dark:bg-dark-card">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="py-16 bg-gray-50 dark:bg-dark-card">
+      <div className="max-w-7xl mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="text-center mb-12"
         >
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-dark-text mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-dark-text mb-3">
             Built for any use case
           </h2>
-          <p className="text-xl text-gray-600 dark:text-dark-text-secondary max-w-2xl mx-auto">
+          <p className="text-base text-gray-600 dark:text-dark-text-secondary max-w-2xl mx-auto">
             Whether you're investing, researching, building, or learning — we've got you covered
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {useCases.map((useCase, index) => (
             <motion.div
               key={useCase.title}
@@ -89,26 +89,26 @@ export default function UseCasesSection() {
               transition={{ duration: 0.6, delay: index * 0.1 }}
               className="group"
             >
-              <div className="h-full bg-white dark:bg-dark-bg rounded-2xl p-8 border border-gray-200 dark:border-dark-border hover:shadow-lg transition-all">
+              <div className="h-full bg-white dark:bg-dark-bg rounded-xl p-6 border border-gray-200 dark:border-dark-border hover:shadow-lg transition-all">
                 {/* Icon */}
-                <div className="w-14 h-14 rounded-xl bg-gray-900 dark:bg-gray-100 flex items-center justify-center text-white dark:text-gray-900 mb-6 group-hover:scale-110 transition-transform">
+                <div className="w-12 h-12 rounded-lg bg-gray-900 dark:bg-gray-100 flex items-center justify-center text-white dark:text-gray-900 mb-4 group-hover:scale-110 transition-transform">
                   {useCase.icon}
                 </div>
 
                 {/* Title and Description */}
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-dark-text mb-2">{useCase.title}</h3>
-                <p className="text-gray-600 dark:text-dark-text-secondary mb-6">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-dark-text mb-2">{useCase.title}</h3>
+                <p className="text-sm text-gray-600 dark:text-dark-text-secondary mb-4">
                   {useCase.description}
                 </p>
 
                 {/* Benefits */}
-                <ul className="space-y-3">
+                <ul className="space-y-2">
                   {useCase.benefits.map((benefit, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-gray-900 dark:bg-gray-100 flex items-center justify-center mt-0.5">
-                        <Check className="w-3 h-3 text-white dark:text-gray-900" />
+                    <li key={i} className="flex items-start gap-2">
+                      <div className="flex-shrink-0 w-4 h-4 rounded-full bg-gray-900 dark:bg-gray-100 flex items-center justify-center mt-0.5">
+                        <Check className="w-2.5 h-2.5 text-white dark:text-gray-900" />
                       </div>
-                      <span className="text-sm text-gray-600 dark:text-dark-text-secondary">
+                      <span className="text-xs text-gray-600 dark:text-dark-text-secondary">
                         {benefit}
                       </span>
                     </li>

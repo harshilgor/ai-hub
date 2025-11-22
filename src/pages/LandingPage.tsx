@@ -14,16 +14,16 @@ export default function LandingPage() {
       <CTASection />
       
       {/* Footer */}
-      <footer className="bg-white dark:bg-dark-bg border-t border-gray-200 dark:border-dark-border py-12">
+      <footer className="bg-white dark:bg-dark-bg border-t border-gray-200 dark:border-dark-border py-8">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             {/* Copyright */}
-            <div className="text-sm text-gray-500 dark:text-dark-text-secondary">
+            <div className="text-xs text-gray-500 dark:text-dark-text-secondary">
               © Copyright 2025 AI Hub
             </div>
 
             {/* Links */}
-            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-600 dark:text-dark-text-secondary">
+            <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-600 dark:text-dark-text-secondary">
               <Link to="/research" className="hover:text-gray-900 dark:hover:text-dark-text transition-colors">
                 Research
               </Link>

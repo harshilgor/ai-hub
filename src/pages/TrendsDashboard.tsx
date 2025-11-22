@@ -22,21 +22,30 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 
-// Mock data for Research Paper Trends
+// Mock data for Research Paper Trends by Field
 const researchPaperData = [
-  { month: 'Jan', papers: 1240, citations: 8500 },
-  { month: 'Feb', papers: 1380, citations: 9200 },
-  { month: 'Mar', papers: 1520, citations: 10100 },
-  { month: 'Apr', papers: 1450, citations: 9800 },
-  { month: 'May', papers: 1680, citations: 11200 },
-  { month: 'Jun', papers: 1750, citations: 11800 },
-  { month: 'Jul', papers: 1890, citations: 12500 },
-  { month: 'Aug', papers: 1920, citations: 13200 },
-  { month: 'Sep', papers: 2050, citations: 14100 },
-  { month: 'Oct', papers: 2180, citations: 15200 },
-  { month: 'Nov', papers: 2100, citations: 14800 },
-  { month: 'Dec', papers: 2250, citations: 16200 },
+  { month: 'Jan', NLP: 320, 'Computer Vision': 280, LLMs: 250, Agents: 180, Robotics: 120, 'Healthcare AI': 90 },
+  { month: 'Feb', NLP: 350, 'Computer Vision': 310, LLMs: 280, Agents: 200, Robotics: 140, 'Healthcare AI': 100 },
+  { month: 'Mar', NLP: 380, 'Computer Vision': 340, LLMs: 310, Agents: 220, Robotics: 150, 'Healthcare AI': 120 },
+  { month: 'Apr', NLP: 360, 'Computer Vision': 330, LLMs: 290, Agents: 210, Robotics: 145, 'Healthcare AI': 115 },
+  { month: 'May', NLP: 420, 'Computer Vision': 380, LLMs: 350, Agents: 250, Robotics: 170, 'Healthcare AI': 130 },
+  { month: 'Jun', NLP: 440, 'Computer Vision': 400, LLMs: 370, Agents: 260, Robotics: 180, 'Healthcare AI': 140 },
+  { month: 'Jul', NLP: 480, 'Computer Vision': 430, LLMs: 400, Agents: 280, Robotics: 190, 'Healthcare AI': 150 },
+  { month: 'Aug', NLP: 490, 'Computer Vision': 440, LLMs: 410, Agents: 290, Robotics: 200, 'Healthcare AI': 160 },
+  { month: 'Sep', NLP: 520, 'Computer Vision': 470, LLMs: 440, Agents: 310, Robotics: 210, 'Healthcare AI': 170 },
+  { month: 'Oct', NLP: 550, 'Computer Vision': 500, LLMs: 470, Agents: 330, Robotics: 220, 'Healthcare AI': 180 },
+  { month: 'Nov', NLP: 530, 'Computer Vision': 480, LLMs: 450, Agents: 320, Robotics: 215, 'Healthcare AI': 175 },
+  { month: 'Dec', NLP: 570, 'Computer Vision': 520, LLMs: 490, Agents: 350, Robotics: 230, 'Healthcare AI': 190 },
 ];
+
+const fieldColors = {
+  'NLP': '#3B82F6',
+  'Computer Vision': '#8B5CF6',
+  'LLMs': '#06B6D4',
+  'Agents': '#10B981',
+  'Robotics': '#F59E0B',
+  'Healthcare AI': '#EF4444',
+};
 
 const topResearchPapers = [
   {
@@ -218,7 +227,7 @@ function ResearchPaperTrendsSection() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
-            className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-100 dark:border-blue-900/30"
+            className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700"
           >
             <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">{metric.label}</div>
             <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mb-1">
@@ -232,46 +241,89 @@ function ResearchPaperTrendsSection() {
       </div>
 
       {/* Chart */}
-      <div className="mb-6 bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
-        <ResponsiveContainer width="100%" height={240}>
-          <AreaChart data={researchPaperData}>
-            <defs>
-              <linearGradient id="colorPapers" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
+      <div className="mb-6 bg-white dark:bg-gray-800/50 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={researchPaperData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
             <XAxis 
               dataKey="month" 
-              tick={{ fontSize: 12, fill: '#6B7280' }}
+              tick={{ fontSize: 11, fill: '#6B7280' }}
               stroke="#D1D5DB"
             />
             <YAxis 
-              tick={{ fontSize: 12, fill: '#6B7280' }}
+              tick={{ fontSize: 11, fill: '#6B7280' }}
               stroke="#D1D5DB"
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                backgroundColor: 'rgba(255, 255, 255, 0.98)',
                 border: '1px solid #E5E7EB',
                 borderRadius: '8px',
-                padding: '8px 12px',
+                padding: '10px 14px',
                 fontSize: '12px',
-                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
               }}
-              labelStyle={{ fontWeight: 600, marginBottom: '4px' }}
+              labelStyle={{ fontWeight: 600, marginBottom: '6px', color: '#111827' }}
             />
-            <Area
+            <Line
               type="monotone"
-              dataKey="papers"
-              stroke="#3B82F6"
-              strokeWidth={2}
-              fillOpacity={1}
-              fill="url(#colorPapers)"
+              dataKey="NLP"
+              stroke={fieldColors.NLP}
+              strokeWidth={2.5}
+              dot={{ r: 3 }}
+              name="NLP"
             />
-          </AreaChart>
+            <Line
+              type="monotone"
+              dataKey="Computer Vision"
+              stroke={fieldColors['Computer Vision']}
+              strokeWidth={2.5}
+              dot={{ r: 3 }}
+              name="Computer Vision"
+            />
+            <Line
+              type="monotone"
+              dataKey="LLMs"
+              stroke={fieldColors.LLMs}
+              strokeWidth={2.5}
+              dot={{ r: 3 }}
+              name="LLMs"
+            />
+            <Line
+              type="monotone"
+              dataKey="Agents"
+              stroke={fieldColors.Agents}
+              strokeWidth={2.5}
+              dot={{ r: 3 }}
+              name="Agents"
+            />
+            <Line
+              type="monotone"
+              dataKey="Robotics"
+              stroke={fieldColors.Robotics}
+              strokeWidth={2.5}
+              dot={{ r: 3 }}
+              name="Robotics"
+            />
+            <Line
+              type="monotone"
+              dataKey="Healthcare AI"
+              stroke={fieldColors['Healthcare AI']}
+              strokeWidth={2.5}
+              dot={{ r: 3 }}
+              name="Healthcare AI"
+            />
+          </LineChart>
         </ResponsiveContainer>
+        {/* Legend */}
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+          {Object.entries(fieldColors).map(([field, color]) => (
+            <div key={field} className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
+              <span className="text-xs text-gray-600 dark:text-gray-400">{field}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Top Papers List */}
@@ -289,7 +341,7 @@ function ResearchPaperTrendsSection() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
-              className="group p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all cursor-pointer"
+              className="group p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer"
               title={`${paper.title} - ${paper.authors} - ${paper.citations} citations`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -378,7 +430,7 @@ function InvestmentTrendsSection() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
-            className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 border border-green-100 dark:border-green-900/30"
+            className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700"
           >
             <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">{metric.label}</div>
             <div className="text-2xl font-bold text-green-600 dark:text-green-400 mb-1">
@@ -392,36 +444,36 @@ function InvestmentTrendsSection() {
       </div>
 
       {/* Chart */}
-      <div className="mb-6 bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
-        <ResponsiveContainer width="100%" height={240}>
+      <div className="mb-6 bg-white dark:bg-gray-800/50 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
+        <ResponsiveContainer width="100%" height={280}>
           <LineChart data={investmentData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.3} />
             <XAxis 
               dataKey="month" 
-              tick={{ fontSize: 12, fill: '#6B7280' }}
+              tick={{ fontSize: 11, fill: '#6B7280' }}
               stroke="#D1D5DB"
             />
             <YAxis 
               yAxisId="left"
-              tick={{ fontSize: 12, fill: '#6B7280' }}
+              tick={{ fontSize: 11, fill: '#6B7280' }}
               stroke="#D1D5DB"
             />
             <YAxis 
               yAxisId="right"
               orientation="right"
-              tick={{ fontSize: 12, fill: '#6B7280' }}
+              tick={{ fontSize: 11, fill: '#6B7280' }}
               stroke="#D1D5DB"
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                backgroundColor: 'rgba(255, 255, 255, 0.98)',
                 border: '1px solid #E5E7EB',
                 borderRadius: '8px',
-                padding: '8px 12px',
+                padding: '10px 14px',
                 fontSize: '12px',
-                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
               }}
-              labelStyle={{ fontWeight: 600, marginBottom: '4px' }}
+              labelStyle={{ fontWeight: 600, marginBottom: '6px', color: '#111827' }}
             />
             <Line
               yAxisId="left"
@@ -461,7 +513,7 @@ function InvestmentTrendsSection() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
-              className="group p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-700 hover:bg-green-50/50 dark:hover:bg-green-900/10 transition-all cursor-pointer"
+              className="group p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer"
               title={`${deal.company} - ${deal.amount} ${deal.round} - ${deal.investors.join(', ')}`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -502,7 +554,7 @@ function InvestmentTrendsSection() {
 // Main Trends Dashboard Component
 export default function TrendsDashboard() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-white dark:bg-gray-950">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <motion.div

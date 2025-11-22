@@ -303,14 +303,14 @@ export default function ResearchPapers() {
                 >
                   {/* Header */}
                   <div className="flex items-start justify-between mb-3 sm:mb-4">
-                    <div className="flex-1 pr-2 sm:pr-4">
+                    <div className="flex-1 pr-2 sm:pr-4 min-w-0">
                       <a
                         href={paper.link}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block"
                       >
-                        <h3 className="text-lg sm:text-xl md:text-2xl font-bold mb-1 sm:mb-2 hover:text-primary-light dark:hover:text-primary-dark cursor-pointer transition-colors leading-tight">
+                        <h3 className="text-lg sm:text-xl md:text-2xl font-bold mb-1 sm:mb-2 hover:text-primary-light dark:hover:text-primary-dark cursor-pointer transition-colors leading-tight break-words">
                           {paper.title}
                         </h3>
                       </a>

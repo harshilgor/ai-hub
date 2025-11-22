@@ -234,7 +234,7 @@ export default function IndustryTrends() {
           >
             <h3 className="text-xl font-bold mb-8">Recent Activity</h3>
             <div className="space-y-6">
-              {data.topStartups.slice(0, 4).map((startup, index) => (
+              {data.topStartups.slice(0, 4).map((startup) => (
                 <div key={startup.id} className="relative pl-6 border-l border-light-border dark:border-dark-border">
                   <div className="absolute left-0 top-1 w-1.5 h-1.5 rounded-full bg-light-text dark:bg-dark-text -translate-x-[4px]"></div>
                   <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary mb-2">
@@ -258,7 +258,7 @@ export default function IndustryTrends() {
           >
             <h3 className="text-xl font-bold mb-8">Active Investors</h3>
             <div className="space-y-3">
-              {['Sequoia Capital', 'Andreessen Horowitz', 'SoftBank Vision', 'General Catalyst', 'Accel'].map((investor, index) => (
+              {['Sequoia Capital', 'Andreessen Horowitz', 'SoftBank Vision', 'General Catalyst', 'Accel'].map((investor) => (
                 <div
                   key={investor}
                   className="flex items-center justify-between py-3 border-b border-light-border dark:border-dark-border last:border-0"

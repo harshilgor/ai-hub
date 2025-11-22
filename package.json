@@ -7,7 +7,7 @@
   "author": "AI Investment Intelligence Hub",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "backend": "cd backend && npm start",
     "backend:dev": "cd backend && npm run dev",

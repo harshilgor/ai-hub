@@ -1,49 +1,25 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Moon, Sun, Home, TrendingUp, Network, FileText, Building2, Search, Bell, User } from 'lucide-react';
-import { useTheme } from '../contexts/ThemeContext';
+import { Home, TrendingUp, FileText, Building2, User } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Header() {
-  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const navItems = [
     { path: '/', icon: Home, label: 'Feed' },
-    { path: '/yc-explorer', icon: Building2, label: 'YC Explorer' },
+    { path: '/industry-insights', icon: Building2, label: 'Industry Insights' },
     { path: '/trends', icon: TrendingUp, label: 'Trends' },
-    { path: '/knowledge-graph', icon: Network, label: 'Knowledge Graph' },
     { path: '/research', icon: FileText, label: 'Research' },
     { path: '/industries', icon: Building2, label: 'Industries' },
   ];
 
   return (
     <header className="sticky top-0 z-50 glass-card border-b border-light-border dark:border-dark-border shadow-sm">
-      <div className="max-w-[1400px] mx-auto px-6 py-4">
-        <div className="flex items-center justify-between">
-          {/* Left: Logo & Search */}
-          <div className="flex items-center gap-6 flex-1">
-            <Link to="/" className="flex items-center gap-2 group">
-              <div className="text-3xl group-hover:scale-110 transition-transform">🤖</div>
-              <div className="hidden lg:block">
-                <div className="font-bold text-lg bg-gradient-to-r from-primary-light to-insight-light bg-clip-text text-transparent">
-                  AI Intelligence Hub
-                </div>
-              </div>
-            </Link>
-
-            <div className="relative flex-1 max-w-md hidden md:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-light-text-secondary dark:text-dark-text-secondary" />
-              <input
-                type="text"
-                placeholder="Search startups, papers, topics..."
-                className="w-full pl-10 pr-4 py-2 rounded-lg bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:outline-none transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Center: Navigation */}
-          <nav className="hidden xl:flex items-center gap-1 mx-6">
+      <div className="max-w-[1400px] mx-auto px-8 py-4">
+        <div className="flex items-center gap-8">
+          {/* Left: Navigation */}
+          <nav className="flex items-center gap-2 min-w-0 overflow-x-auto">
             {navItems.map(({ path, icon: Icon, label }) => {
               const isActive = location.pathname === path || 
                 (path !== '/' && location.pathname.startsWith(path));
@@ -51,7 +27,7 @@ export default function Header() {
                 <Link
                   key={path}
                   to={path}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${
                     isActive
                       ? 'bg-primary-light/10 dark:bg-primary-dark/10 text-primary-light dark:text-primary-dark font-medium'
                       : 'text-light-text-secondary dark:text-dark-text-secondary hover:bg-light-bg dark:hover:bg-dark-bg'
@@ -64,26 +40,28 @@ export default function Header() {
             })}
           </nav>
 
-          {/* Right: Actions */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg transition-colors"
-              aria-label="Toggle theme"
-            >
-              {theme === 'light' ? (
-                <Moon className="w-5 h-5" />
-              ) : (
-                <Sun className="w-5 h-5" />
-              )}
-            </button>
+          {/* Spacer */}
+          <div className="flex-1"></div>
 
-            <button className="relative p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-            </button>
+          {/* Right: Stats & User */}
+          <div className="flex items-center gap-8 flex-shrink-0">
+            {/* Live Stats */}
+            <div className="flex items-center gap-8">
+              <div className="text-center min-w-[80px]">
+                <div className="text-2xl font-bold text-primary-light dark:text-primary-dark">487</div>
+                <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-0.5">Startups funded</div>
+              </div>
+              <div className="text-center min-w-[80px]">
+                <div className="text-2xl font-bold text-success-light dark:text-success-dark">$12.3B</div>
+                <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-0.5">Raised</div>
+              </div>
+              <div className="text-center min-w-[80px]">
+                <div className="text-2xl font-bold text-insight-light dark:text-insight-dark">23</div>
+                <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-0.5">New papers</div>
+              </div>
+            </div>
 
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="flex items-center gap-2 p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg transition-colors"
@@ -119,27 +97,6 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Mobile Navigation */}
-        <nav className="xl:hidden flex items-center gap-2 mt-4 overflow-x-auto pb-2">
-          {navItems.map(({ path, icon: Icon, label }) => {
-            const isActive = location.pathname === path || 
-              (path !== '/' && location.pathname.startsWith(path));
-            return (
-              <Link
-                key={path}
-                to={path}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg whitespace-nowrap transition-all text-sm ${
-                  isActive
-                    ? 'bg-primary-light/10 dark:bg-primary-dark/10 text-primary-light dark:text-primary-dark font-medium'
-                    : 'text-light-text-secondary dark:text-dark-text-secondary hover:bg-light-bg dark:hover:bg-dark-bg'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{label}</span>
-              </Link>
-            );
-          })}
-        </nav>
       </div>
     </header>
   );

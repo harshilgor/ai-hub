@@ -1,16 +1,13 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Bookmark, Share2, ExternalLink, Filter, Lightbulb, Link2, FileText, Newspaper, Users, Zap, Target, ArrowRight } from 'lucide-react';
+import { TrendingUp, Bookmark, Share2, ExternalLink, Filter, Lightbulb, Users, Zap, Target } from 'lucide-react';
 import { 
   mockStartups, 
   trendingCategories, 
   mockInvestors, 
   aiCategories,
-  industryInsights,
   technologyTrends,
-  investorActivity,
-  mockPapers,
-  newsItems
+  investorActivity
 } from '../data/mockData';
 
 export default function HomePage() {
@@ -18,7 +15,6 @@ export default function HomePage() {
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
 
   // Debug: Verify data is loaded
-  console.log('Industry Insights:', industryInsights);
   console.log('Technology Trends:', technologyTrends);
   console.log('Investor Activity:', investorActivity);
 
@@ -44,148 +40,26 @@ export default function HomePage() {
     );
   };
 
-  const getConnectionIcon = (type: string) => {
-    switch (type) {
-      case 'paper': return <FileText className="w-4 h-4" />;
-      case 'news': return <Newspaper className="w-4 h-4" />;
-      case 'insider': return <Users className="w-4 h-4" />;
-      case 'company': return <Zap className="w-4 h-4" />;
-      case 'investor': return <TrendingUp className="w-4 h-4" />;
-      default: return <Link2 className="w-4 h-4" />;
-    }
-  };
-
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <div className="bg-gradient-to-br from-primary-light/10 via-insight-light/10 to-success-light/10 dark:from-primary-dark/10 dark:via-insight-dark/10 dark:to-success-dark/10 border-b border-light-border dark:border-dark-border">
-        <div className="max-w-[1400px] mx-auto px-6 py-12">
+      <div className="bg-gradient-to-br from-primary-light/10 via-insight-light/10 to-success-light/10 dark:from-primary-dark/10 dark:via-insight-dark/10 dark:to-success-dark/10">
+        <div className="max-w-[1400px] mx-auto px-6 py-2">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="text-center"
+            className="text-right"
           >
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-primary-light to-insight-light bg-clip-text text-transparent">
-              The AI Investment Intelligence Hub
-            </h1>
-            <p className="text-lg text-light-text-secondary dark:text-dark-text-secondary mb-8">
+            <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
               Connect the dots: Research papers, news, insider moves, and funding trends
             </p>
-
-            {/* Live Stats */}
-            <div className="flex flex-wrap justify-center gap-8">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-center"
-              >
-                <div className="text-3xl font-bold text-primary-light dark:text-primary-dark">487</div>
-                <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">AI startups funded this month</div>
-              </motion.div>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.3 }}
-                className="text-center"
-              >
-                <div className="text-3xl font-bold text-success-light dark:text-success-dark">$12.3B</div>
-                <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">Raised this quarter</div>
-              </motion.div>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.4 }}
-                className="text-center"
-              >
-                <div className="text-3xl font-bold text-insight-light dark:text-insight-dark">23</div>
-                <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">New papers today</div>
-              </motion.div>
-            </div>
           </motion.div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="max-w-[1400px] mx-auto px-6 py-8">
-        {/* Industry Insights Section */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <Lightbulb className="w-6 h-6 text-insight-light dark:text-insight-dark" />
-            <h2 className="text-3xl font-bold">Industry Insights</h2>
-            <span className="ml-auto px-3 py-1 rounded-full text-xs font-medium bg-primary-light/20 text-primary-light dark:text-primary-dark">
-              {industryInsights.length} insights
-            </span>
-          </div>
-          <p className="text-light-text-secondary dark:text-dark-text-secondary mb-6">
-            Key events, their connections to research, news, and insider moves
-          </p>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {industryInsights.map((insight, index) => (
-              <motion.div
-                key={insight.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="glass-card rounded-xl p-6 border border-light-border dark:border-dark-border hover-lift"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-xl font-bold">{insight.title}</h3>
-                      {insight.impact === 'high' && (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-500">
-                          High Impact
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary mb-2">
-                      {insight.event}
-                    </p>
-                    <p className="text-sm text-light-text dark:text-dark-text">
-                      {insight.explanation}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Connections */}
-                <div className="mt-4 pt-4 border-t border-light-border dark:border-dark-border">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Link2 className="w-4 h-4 text-primary-light dark:text-primary-dark" />
-                    <span className="text-sm font-medium">Connections:</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {insight.connections.map((conn, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-light/10 dark:bg-primary-dark/10 text-xs"
-                      >
-                        {getConnectionIcon(conn.type)}
-                        <span className="text-primary-light dark:text-primary-dark">{conn.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                    {insight.date}
-                  </span>
-                  <button className="text-xs text-primary-light dark:text-primary-dark hover:underline flex items-center gap-1">
-                    View in Knowledge Graph
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.section>
 
         {/* Technology Trends & Next Big Things */}
         <motion.section

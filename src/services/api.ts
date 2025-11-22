@@ -62,7 +62,15 @@ export async function fetchPapers(options: {
   if (options.limit) params.append('limit', options.limit.toString());
   if (options.offset) params.append('offset', options.offset.toString());
 
-  const response = await fetch(`${API_BASE_URL}/papers?${params}`);
+  // Add cache-busting timestamp to prevent stale data
+  params.append('_t', Date.now().toString());
+  
+  const response = await fetch(`${API_BASE_URL}/papers?${params}`, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache'
+    }
+  });
   
   if (!response.ok) {
     throw new Error(`Failed to fetch papers: ${response.statusText}`);

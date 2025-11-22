@@ -30,6 +30,17 @@ export default function ResearchPapers() {
     loadStats();
   }, [selectedCategory, selectedVenue, selectedSource]);
 
+  // Auto-refresh papers every 2 minutes to show new papers
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('🔄 Auto-refreshing papers...');
+      loadPapers();
+      loadStats();
+    }, 2 * 60 * 1000); // Every 2 minutes
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {

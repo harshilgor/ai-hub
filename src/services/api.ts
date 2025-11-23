@@ -213,6 +213,148 @@ export async function getTotalPaperCount(): Promise<{
   return response.json();
 }
 
+// Insights API Types
+export interface TechnologyInsight {
+  technology: string;
+  momentum: number;
+  velocity: number;
+  confidence: number;
+  signalCount: number;
+  signalStrength: number;
+  sourceBreakdown: {
+    papers: number;
+    patents: number;
+    news: number;
+    podcasts: number;
+    github: number;
+  };
+}
+
+export interface IndustryInsight {
+  industry: string;
+  growthRate: number;
+  growthScore: number;
+  confidence: number;
+  signalCount: number;
+  monthlyTrend: Record<string, number>;
+}
+
+export interface EmergingTechnology {
+  technology: string;
+  emergingScore: number;
+  velocity: number;
+  signalCount: number;
+  totalSignals: number;
+  leaderMentions: number;
+  confidence: number;
+}
+
+export interface TechnologyPrediction {
+  technology: string;
+  predictionScore: number;
+  momentum: number;
+  confidence: number;
+  isEarlyStage: boolean;
+  leaderMentions: number;
+  patentCount: number;
+  signalCount: number;
+}
+
+export interface LeaderQuote {
+  text: string;
+  technologies: string[];
+  source: string;
+  published: string;
+  confidence: number;
+}
+
+// Insights API Functions
+export async function getTechnologyInsights(timeWindow: number = 30): Promise<{
+  technologies: TechnologyInsight[];
+  timeWindow: number;
+  lastUpdate: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/insights/technologies?timeWindow=${timeWindow}`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get technology insights: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getIndustryInsights(timeWindow: number = 90): Promise<{
+  industries: IndustryInsight[];
+  timeWindow: number;
+  lastUpdate: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/insights/industries?timeWindow=${timeWindow}`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get industry insights: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getEmergingTechnologies(timeWindow: number = 30): Promise<{
+  emerging: EmergingTechnology[];
+  timeWindow: number;
+  lastUpdate: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/insights/emerging?timeWindow=${timeWindow}`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get emerging technologies: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getTechnologyPredictions(): Promise<{
+  predictions: TechnologyPrediction[];
+  lastUpdate: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/insights/predictions`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get predictions: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getLeaderQuotes(): Promise<{
+  quotes: LeaderQuote[];
+  lastUpdate: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/insights/leader-quotes`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get leader quotes: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getCombinedSignal(technology: string): Promise<{
+  technology: string;
+  signalStrength: {
+    totalStrength: number;
+    sourceBreakdown: Record<string, number>;
+    signalCount: number;
+  };
+  lastUpdate: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/insights/combined-signal?technology=${encodeURIComponent(technology)}`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get combined signal: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 /**
  * Check API health
  */

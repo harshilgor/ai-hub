@@ -18,7 +18,18 @@ import {
   getPaperAutocomplete,
   transformSemanticScholarPaper
 } from './services/semanticScholarService.js';
-import { fetchLatestPapersFromOpenAlex } from './services/openAlexService.js';
+import { fetchLatestTechNews } from './services/newsService.js';
+import { fetchLatestPatents } from './services/patentService.js';
+import { fetchLatestGithubActivity } from './services/githubService.js';
+import { aggregateAllSignals, extractTechnologiesFromSignals, extractIndustriesFromSignals } from './services/aggregationService.js';
+import {
+  calculateTechnologyMomentum,
+  calculateIndustryGrowth,
+  predictNextBigTechnology,
+  detectEmergingTechnologies,
+  extractLeaderQuotes,
+  calculateCombinedSignalStrength
+} from './services/insightEngine.js';
 
 dotenv.config();
 
@@ -38,6 +49,17 @@ let lastFetchTime = null;
 let industryStats = {};
 let lastPaperDate = null; // Track the date of the newest paper we've seen
 let oldestPaperDate = null; // Track the date of the oldest paper we've fetched
+
+// Insights cache
+let allSignalsCache = []; // Combined signals from all sources
+let insightsCache = {
+  technologies: [],
+  industries: [],
+  emerging: [],
+  predictions: [],
+  leaderQuotes: [],
+  lastUpdate: null
+};
 
 // Database file path
 const DB_PATH = path.join(__dirname, 'data', 'papers.json');
@@ -297,10 +319,9 @@ async function updatePapers() {
     // Try fetching recent papers first (newer than lastPaperDate)
     console.log(`🔍 Attempt 1: Fetching papers newer than ${dateThreshold.toISOString()}`);
     
-    const [ssResult, arxivResult, openAlexResult] = await Promise.allSettled([
+    const [ssResult, arxivResult] = await Promise.allSettled([
       fetchLatestPapersFromSemanticScholar(100, currentYear, dateThreshold),
-      fetchArXivLatest(100, dateThreshold),
-      fetchLatestPapersFromOpenAlex(500, dateThreshold) // Fetch 500 papers from OpenAlex
+      fetchArXivLatest(100, dateThreshold)
     ]);
     
     let papers = [];
@@ -338,22 +359,6 @@ async function updatePapers() {
       console.error('⚠️ arXiv fetch failed:', arxivResult.reason?.message);
     }
     
-    // Process OpenAlex results
-    if (openAlexResult.status === 'fulfilled' && openAlexResult.value.length > 0) {
-      console.log(`✅ Found ${openAlexResult.value.length} papers from OpenAlex`);
-      
-      const openAlexWithSource = openAlexResult.value.map(p => ({
-        ...p,
-        source: 'OpenAlex',
-        sourceId: 'openalex'
-      }));
-      
-      papers.push(...openAlexWithSource);
-    } else if (openAlexResult.status === 'rejected') {
-      console.error('⚠️ OpenAlex fetch failed:', openAlexResult.reason?.message);
-    }
-    
-
     if (papers.length > 0) {
       console.log(`📦 Total papers before deduplication: ${papers.length}`);
       
@@ -427,10 +432,9 @@ async function updatePapers() {
         
         console.log(`🔍 Attempt ${i + 2}/${expansionWindows.length + 1}: Fetching papers from ${window.label} (threshold: ${backwardThreshold.toISOString()})`);
         
-        const [ssResult2, arxivResult2, openAlexResult2] = await Promise.allSettled([
+        const [ssResult2, arxivResult2] = await Promise.allSettled([
           fetchLatestPapersFromSemanticScholar(100, currentYear, backwardThreshold),
-          fetchArXivLatest(100, backwardThreshold),
-          fetchLatestPapersFromOpenAlex(500, backwardThreshold)
+          fetchArXivLatest(100, backwardThreshold)
         ]);
         
         let papers2 = [];
@@ -456,16 +460,6 @@ async function updatePapers() {
           papers2.push(...arxivWithSource);
         }
         
-        if (openAlexResult2.status === 'fulfilled' && openAlexResult2.value.length > 0) {
-          const openAlexWithSource = openAlexResult2.value.map(p => ({
-            ...p,
-            source: 'OpenAlex',
-            sourceId: 'openalex'
-          }));
-          papers2.push(...openAlexWithSource);
-        }
-        
-        
         if (papers2.length === 0) {
           console.log(`⚠️ No papers found for ${window.label}, trying next window...`);
           continue;
@@ -478,7 +472,6 @@ async function updatePapers() {
         papersCache.forEach(p => {
           if (p.arxivId) existingIds2.add(`arxiv:${p.arxivId}`);
           if (p.semanticScholarId) existingIds2.add(`ss:${p.semanticScholarId}`);
-          if (p.openAlexId) existingIds2.add(`openalex:${p.openAlexId}`);
           if (p.crossrefId) existingIds2.add(`crossref:${p.crossrefId}`);
           if (p.pubmedId) existingIds2.add(`pubmed:${p.pubmedId}`);
           if (p.dblpKey) existingIds2.add(`dblp:${p.dblpKey}`);
@@ -489,7 +482,6 @@ async function updatePapers() {
           const arxivId = p.arxivId || extractArxivId(p.link);
           if (arxivId && existingIds2.has(`arxiv:${arxivId}`)) return false;
           if (p.semanticScholarId && existingIds2.has(`ss:${p.semanticScholarId}`)) return false;
-          if (p.openAlexId && existingIds2.has(`openalex:${p.openAlexId}`)) return false;
           if (p.crossrefId && existingIds2.has(`crossref:${p.crossrefId}`)) return false;
           if (p.pubmedId && existingIds2.has(`pubmed:${p.pubmedId}`)) return false;
           if (p.dblpKey && existingIds2.has(`dblp:${p.dblpKey}`)) return false;
@@ -587,12 +579,10 @@ async function updatePapers() {
     // Log source breakdown
     const arxivCount = limitedPapers.filter(p => p.sourceId === 'arxiv').length;
     const ssCount = limitedPapers.filter(p => p.sourceId === 'semantic-scholar').length;
-    const openAlexCount = limitedPapers.filter(p => p.sourceId === 'openalex').length;
-    
     console.log(`✅ Updated database: ${papersCache.length} total papers (${trulyNewPapers.length} new fetched, ${actualAdded} actually added)`);
     console.log(`📈 Count change: ${previousCount} → ${newCount} (+${actualAdded})`);
     console.log(`📊 Date range: ${oldestPaperDate || 'N/A'} to ${lastPaperDate || 'N/A'}`);
-    console.log(`📊 Source breakdown: arXiv: ${arxivCount}, Semantic Scholar: ${ssCount}, OpenAlex: ${openAlexCount}`);
+    console.log(`📊 Source breakdown: arXiv: ${arxivCount}, Semantic Scholar: ${ssCount}`);
     console.log(`📊 Industry stats:`, industryStats);
 
     // After successful update, check for gaps in historical coverage and fill them
@@ -674,10 +664,9 @@ async function fillHistoricalGaps() {
     for (const gap of monthsToFill) {
       console.log(`📅 Filling gap for ${gap.monthKey} (currently has ${gap.count} papers)`);
       
-      const [ssGapResult, arxivGapResult, openAlexGapResult] = await Promise.allSettled([
+      const [ssGapResult, arxivGapResult] = await Promise.allSettled([
         fetchLatestPapersFromSemanticScholar(100, gap.start.getFullYear(), gap.start),
-        fetchArXivLatest(100, gap.start),
-        fetchLatestPapersFromOpenAlex(200, gap.start) // Fetch 200 papers per gap month
+        fetchArXivLatest(100, gap.start)
       ]);
       
       let gapPapers = [];
@@ -703,16 +692,6 @@ async function fillHistoricalGaps() {
         gapPapers.push(...arxivWithSource);
       }
       
-      if (openAlexGapResult.status === 'fulfilled' && openAlexGapResult.value.length > 0) {
-        const openAlexWithSource = openAlexGapResult.value.map(p => ({
-          ...p,
-          source: 'OpenAlex',
-          sourceId: 'openalex'
-        }));
-        gapPapers.push(...openAlexWithSource);
-      }
-      
-
       // Filter papers to only include those from the gap month (with some flexibility)
       const gapMonthStart = new Date(gap.start.getFullYear(), gap.start.getMonth(), 1);
       const gapMonthEnd = new Date(gap.start.getFullYear(), gap.start.getMonth() + 1, 0, 23, 59, 59);
@@ -1116,7 +1095,6 @@ app.get('/api/papers/total', (req, res) => {
     sourceBreakdown: {
       arxiv: papersCache.filter(p => p.sourceId === 'arxiv').length,
       'semantic-scholar': papersCache.filter(p => p.sourceId === 'semantic-scholar').length,
-      openalex: papersCache.filter(p => p.sourceId === 'openalex').length
     }
   });
 });
@@ -1197,6 +1175,203 @@ app.post('/api/papers/batch', async (req, res) => {
 });
 
 /**
+ * GET /api/insights/technologies - Get technology momentum and predictions
+ */
+app.get('/api/insights/technologies', async (req, res) => {
+  try {
+    const timeWindow = parseInt(req.query.timeWindow) || 30; // days
+    
+    // Get all signals (papers + news + patents + etc.)
+    const allSignals = await getAllSignals();
+    
+    // Extract all technologies
+    const technologies = extractTechnologiesFromSignals(allSignals);
+    
+    // Calculate momentum for each technology
+    const technologyInsights = technologies.map(tech => {
+      const techSignals = allSignals.filter(s => 
+        (s.technologies || []).includes(tech)
+      );
+      
+      const momentum = calculateTechnologyMomentum(tech, techSignals, timeWindow);
+      const signalStrength = calculateCombinedSignalStrength(tech, allSignals);
+      
+      return {
+        technology: tech,
+        momentum: momentum.momentum,
+        velocity: momentum.velocity,
+        confidence: momentum.confidence,
+        signalCount: momentum.signalCount,
+        signalStrength: signalStrength.totalStrength,
+        sourceBreakdown: signalStrength.sourceBreakdown
+      };
+    });
+    
+    // Sort by momentum
+    technologyInsights.sort((a, b) => b.momentum - a.momentum);
+    
+    res.json({
+      technologies: technologyInsights,
+      timeWindow: timeWindow,
+      lastUpdate: insightsCache.lastUpdate
+    });
+  } catch (error) {
+    console.error('Error fetching technology insights:', error);
+    res.status(500).json({ error: 'Failed to fetch technology insights' });
+  }
+});
+
+/**
+ * GET /api/insights/industries - Get industry growth rankings
+ */
+app.get('/api/insights/industries', async (req, res) => {
+  try {
+    const timeWindow = parseInt(req.query.timeWindow) || 90; // days
+    
+    const allSignals = await getAllSignals();
+    const industries = extractIndustriesFromSignals(allSignals);
+    
+    const industryInsights = industries.map(industry => {
+      const growth = calculateIndustryGrowth(industry, allSignals, timeWindow);
+      
+      return {
+        industry: industry,
+        growthRate: growth.growthRate,
+        growthScore: growth.growthScore,
+        confidence: growth.confidence,
+        signalCount: growth.signalCount,
+        monthlyTrend: growth.monthlyTrend
+      };
+    });
+    
+    // Sort by growth score
+    industryInsights.sort((a, b) => b.growthScore - a.growthScore);
+    
+    res.json({
+      industries: industryInsights,
+      timeWindow: timeWindow,
+      lastUpdate: insightsCache.lastUpdate
+    });
+  } catch (error) {
+    console.error('Error fetching industry insights:', error);
+    res.status(500).json({ error: 'Failed to fetch industry insights' });
+  }
+});
+
+/**
+ * GET /api/insights/emerging - Get emerging technologies
+ */
+app.get('/api/insights/emerging', async (req, res) => {
+  try {
+    const timeWindow = parseInt(req.query.timeWindow) || 30;
+    
+    const allSignals = await getAllSignals();
+    const emerging = detectEmergingTechnologies(allSignals, timeWindow);
+    
+    res.json({
+      emerging: emerging.slice(0, 20), // Top 20
+      timeWindow: timeWindow,
+      lastUpdate: insightsCache.lastUpdate
+    });
+  } catch (error) {
+    console.error('Error fetching emerging technologies:', error);
+    res.status(500).json({ error: 'Failed to fetch emerging technologies' });
+  }
+});
+
+/**
+ * GET /api/insights/predictions - Get next big technology predictions
+ */
+app.get('/api/insights/predictions', async (req, res) => {
+  try {
+    const allSignals = await getAllSignals();
+    const technologies = extractTechnologiesFromSignals(allSignals);
+    
+    const predictions = predictNextBigTechnology(technologies, allSignals);
+    
+    res.json({
+      predictions: predictions.slice(0, 10), // Top 10
+      lastUpdate: insightsCache.lastUpdate
+    });
+  } catch (error) {
+    console.error('Error fetching predictions:', error);
+    res.status(500).json({ error: 'Failed to fetch predictions' });
+  }
+});
+
+/**
+ * GET /api/insights/leader-quotes - Get key quotes from podcasts
+ */
+app.get('/api/insights/leader-quotes', async (req, res) => {
+  try {
+    const allSignals = await getAllSignals();
+    const quotes = extractLeaderQuotes(allSignals);
+    
+    res.json({
+      quotes: quotes,
+      lastUpdate: insightsCache.lastUpdate
+    });
+  } catch (error) {
+    console.error('Error fetching leader quotes:', error);
+    res.status(500).json({ error: 'Failed to fetch leader quotes' });
+  }
+});
+
+/**
+ * GET /api/insights/combined-signal - Get combined signal strength for a technology
+ */
+app.get('/api/insights/combined-signal', async (req, res) => {
+  try {
+    const technology = req.query.technology;
+    
+    if (!technology) {
+      return res.status(400).json({ error: 'Technology parameter required' });
+    }
+    
+    const allSignals = await getAllSignals();
+    const signalStrength = calculateCombinedSignalStrength(technology, allSignals);
+    
+    res.json({
+      technology: technology,
+      signalStrength: signalStrength,
+      lastUpdate: insightsCache.lastUpdate
+    });
+  } catch (error) {
+    console.error('Error fetching combined signal:', error);
+    res.status(500).json({ error: 'Failed to fetch combined signal' });
+  }
+});
+
+/**
+ * Helper function to get all signals (papers + other sources)
+ */
+async function getAllSignals() {
+  // Always include fresh papers
+  const paperSignals = papersCache.map(paper => ({
+    ...paper,
+    type: 'paper'
+  }));
+  
+  // Get other signals from cache or fetch fresh
+  let otherSignals = [];
+  if (allSignalsCache.length === 0 || 
+      !insightsCache.lastUpdate || 
+      Date.now() - new Date(insightsCache.lastUpdate).getTime() > 6 * 60 * 60 * 1000) {
+    // Fetch fresh signals
+    otherSignals = await aggregateAllSignals(30);
+    // Update cache (excluding papers, as they're added fresh each time)
+    allSignalsCache = otherSignals.filter(s => s.type !== 'paper');
+    insightsCache.lastUpdate = new Date().toISOString();
+  } else {
+    // Use cached other signals
+    otherSignals = allSignalsCache;
+  }
+  
+  // Always combine fresh papers with other signals
+  return [...paperSignals, ...otherSignals];
+}
+
+/**
  * GET /api/health - Health check
  */
 app.get('/api/health', (req, res) => {
@@ -1270,6 +1445,24 @@ async function initialize() {
   }
 
   // Schedule automatic updates every 10 minutes
+  // Schedule insights data refresh every 6 hours
+  cron.schedule('0 */6 * * *', async () => {
+    console.log('🔄 Refreshing insights data...');
+    try {
+      // Fetch fresh signals
+      const otherSignals = await aggregateAllSignals(30);
+      const paperSignals = papersCache.map(paper => ({
+        ...paper,
+        type: 'paper'
+      }));
+      allSignalsCache = [...paperSignals, ...otherSignals];
+      insightsCache.lastUpdate = new Date().toISOString();
+      console.log(`✅ Updated insights cache with ${allSignalsCache.length} signals`);
+    } catch (error) {
+      console.error('❌ Error refreshing insights:', error.message);
+    }
+  });
+
   cron.schedule('*/10 * * * *', () => {
     console.log('⏰ Scheduled update triggered (every 10 minutes)');
     updatePapers();

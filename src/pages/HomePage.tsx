@@ -9,6 +9,7 @@ import {
   technologyTrends,
   investorActivity
 } from '../data/mockData';
+import InsightsSection from '../components/InsightsSection';
 
 export default function HomePage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -60,6 +61,15 @@ export default function HomePage() {
 
       {/* Main Content */}
       <div className="max-w-[1400px] mx-auto px-6 py-8">
+
+        {/* AI-Powered Insights Section */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-12"
+        >
+          <InsightsSection />
+        </motion.section>
 
         {/* Technology Trends & Next Big Things */}
         <motion.section

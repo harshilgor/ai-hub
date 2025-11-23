@@ -221,7 +221,7 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
     
     // Search for each AI topic with offset to get different papers
     // Reduce number of queries to avoid rate limits - use fewer, more targeted queries
-    const queriesToUse = aiQueries.slice(0, 5); // Only use first 5 queries to reduce API calls
+    const queriesToUse = aiQueries.slice(0, 2); // Only use first 2 queries to reduce API calls (was 5)
     let offset = 0;
     let successfulQueries = 0;
     
@@ -246,11 +246,18 @@ export async function fetchLatestPapersFromSemanticScholar(limit = 100, year = 2
         if (response.data && response.data.data) {
           let papers = response.data.data;
           
-          // Filter by date threshold if provided, but be lenient (allow papers within 1 day of threshold)
+          // Filter by date threshold if provided, but be lenient
           if (dateThreshold) {
             const thresholdDate = new Date(dateThreshold);
-            // Allow papers from 1 day before threshold to account for timezone differences
-            thresholdDate.setDate(thresholdDate.getDate() - 1);
+            // If threshold is very recent (within last 24 hours), don't filter strictly
+            const hoursSinceThreshold = (Date.now() - thresholdDate.getTime()) / (1000 * 60 * 60);
+            if (hoursSinceThreshold < 24) {
+              // Very recent threshold - be lenient, allow papers from last 7 days
+              thresholdDate.setDate(thresholdDate.getDate() - 7);
+            } else {
+              // Older threshold - allow 1 day buffer for timezone differences
+              thresholdDate.setDate(thresholdDate.getDate() - 1);
+            }
             
             papers = papers.filter(p => {
               const paperDate = new Date(p.publicationDate || (p.year ? `${p.year}-01-01` : 0));

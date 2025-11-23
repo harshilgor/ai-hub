@@ -18,6 +18,7 @@ import {
   getPaperAutocomplete,
   transformSemanticScholarPaper
 } from './services/semanticScholarService.js';
+import { fetchLatestPapersFromOpenAlex } from './services/openAlexService.js';
 
 dotenv.config();
 
@@ -49,7 +50,20 @@ async function loadPapersFromDB() {
     await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
     const data = await fs.readFile(DB_PATH, 'utf-8');
     const parsed = JSON.parse(data);
-    papersCache = parsed.papers || [];
+    
+    // Filter out papers from removed sources (Crossref, PubMed, DBLP)
+    const allPapers = parsed.papers || [];
+    papersCache = allPapers.filter(p => {
+      const sourceId = p.sourceId || '';
+      return sourceId !== 'crossref' && sourceId !== 'pubmed' && sourceId !== 'dblp';
+    });
+    
+    // If we filtered out papers, log it
+    if (allPapers.length !== papersCache.length) {
+      const removed = allPapers.length - papersCache.length;
+      console.log(`🧹 Filtered out ${removed} papers from removed sources (Crossref, PubMed, DBLP)`);
+    }
+    
     lastFetchTime = parsed.lastFetchTime;
     industryStats = parsed.industryStats || {};
     lastPaperDate = parsed.lastPaperDate || null;
@@ -156,6 +170,26 @@ function removeDuplicatePapers(papers) {
       isDuplicate = true;
     }
     
+    // Level 2.5: Check by OpenAlex ID
+    if (!isDuplicate && paper.openAlexId && seen.has(`openalex:${paper.openAlexId}`)) {
+      isDuplicate = true;
+    }
+    
+    // Level 2.6: Check by Crossref ID (DOI-based)
+    if (!isDuplicate && paper.crossrefId && seen.has(`crossref:${paper.crossrefId}`)) {
+      isDuplicate = true;
+    }
+    
+    // Level 2.7: Check by PubMed ID
+    if (!isDuplicate && paper.pubmedId && seen.has(`pubmed:${paper.pubmedId}`)) {
+      isDuplicate = true;
+    }
+    
+    // Level 2.8: Check by DBLP key
+    if (!isDuplicate && paper.dblpKey && seen.has(`dblp:${paper.dblpKey}`)) {
+      isDuplicate = true;
+    }
+    
     // Level 3: Check by normalized title (fuzzy match)
     if (!isDuplicate) {
       const titleKey = normalizeTitle(paper.title);
@@ -173,6 +207,10 @@ function removeDuplicatePapers(papers) {
       // Mark as seen using all available identifiers
       if (arxivId) seen.set(`arxiv:${arxivId}`, true);
       if (paper.semanticScholarId) seen.set(`ss:${paper.semanticScholarId}`, true);
+      if (paper.openAlexId) seen.set(`openalex:${paper.openAlexId}`, true);
+      if (paper.crossrefId) seen.set(`crossref:${paper.crossrefId}`, true);
+      if (paper.pubmedId) seen.set(`pubmed:${paper.pubmedId}`, true);
+      if (paper.dblpKey) seen.set(`dblp:${paper.dblpKey}`, true);
       const titleKey = normalizeTitle(paper.title);
       seen.set(`title:${titleKey}`, true);
       if (paper.doi) seen.set(`doi:${paper.doi}`, true);
@@ -238,88 +276,85 @@ async function updatePapers() {
     const currentYear = new Date().getFullYear();
     let trulyNewPapers = [];
     
-    // Strategy: Try recent first, then go backwards
-    // Define expansion strategy: recent → older
-    const expansionWindows = [
-      { days: 3, label: 'last 3 days' },
-      { days: 7, label: 'last 7 days' },
-      { days: 14, label: 'last 14 days' },
-      { days: 30, label: 'last 30 days' },
-      { days: 60, label: 'last 60 days' },
-      { days: 90, label: 'last 90 days' },
-      { days: 180, label: 'last 6 months' },
-      { days: 365, label: 'last year' },
-      { days: 730, label: 'last 2 years' },
-    ];
+    // FIXED: Start from lastPaperDate, not a fixed window
+    // Strategy: Always fetch papers NEWER than lastPaperDate first
+    let dateThreshold;
     
-    let currentWindowIndex = 0;
-    
-    while (trulyNewPapers.length === 0 && currentWindowIndex < expansionWindows.length) {
-      const window = expansionWindows[currentWindowIndex];
-      const dateThreshold = new Date();
-      dateThreshold.setDate(dateThreshold.getDate() - window.days);
+    if (lastPaperDate) {
+      // Fetch papers newer than the newest paper we have
+      dateThreshold = new Date(lastPaperDate);
+      // Add a small buffer (1 hour) to account for papers published at the same time
+      dateThreshold.setHours(dateThreshold.getHours() - 1);
+      console.log(`📅 Fetching papers newer than last known paper: ${dateThreshold.toISOString()}`);
+    } else {
+      // First run: fetch from last 48 hours
+      dateThreshold = new Date();
+      dateThreshold.setDate(dateThreshold.getDate() - 2);
       dateThreshold.setHours(0, 0, 0, 0);
+      console.log(`📅 First run: Fetching papers from last 48 hours`);
+    }
+    
+    // Try fetching recent papers first (newer than lastPaperDate)
+    console.log(`🔍 Attempt 1: Fetching papers newer than ${dateThreshold.toISOString()}`);
+    
+    const [ssResult, arxivResult, openAlexResult] = await Promise.allSettled([
+      fetchLatestPapersFromSemanticScholar(100, currentYear, dateThreshold),
+      fetchArXivLatest(100, dateThreshold),
+      fetchLatestPapersFromOpenAlex(500, dateThreshold) // Fetch 500 papers from OpenAlex
+    ]);
+    
+    let papers = [];
+    
+    // Process Semantic Scholar results
+    if (ssResult.status === 'fulfilled' && ssResult.value.length > 0) {
+      console.log(`✅ Found ${ssResult.value.length} papers from Semantic Scholar`);
       
-      // If we have an oldestPaperDate and we're going back further, check if we should skip
-      if (oldestPaperDate) {
-        const oldestDate = new Date(oldestPaperDate);
-        // If the window goes back further than our oldest paper, we might already have papers from this period
-        // But we still want to try in case there are gaps
-        const daysSinceOldest = Math.floor((Date.now() - oldestDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysSinceOldest > window.days && currentWindowIndex > 3) {
-          // We've already fetched papers from this period, but continue to fill any gaps
-          console.log(`⏭️ Note: Already have papers from ${window.label}, but checking for gaps...`);
-        }
-      }
-      
-      console.log(`🔍 Attempt ${currentWindowIndex + 1}/${expansionWindows.length}: Fetching papers from ${window.label} (threshold: ${dateThreshold.toISOString()})`);
-      
-      const [ssResult, arxivResult] = await Promise.allSettled([
-        fetchLatestPapersFromSemanticScholar(100, currentYear, dateThreshold),
-        fetchArXivLatest(100, dateThreshold)
-      ]);
-      
-      let papers = [];
-      
-      // Process Semantic Scholar results
-      if (ssResult.status === 'fulfilled' && ssResult.value.length > 0) {
-        console.log(`✅ Found ${ssResult.value.length} papers from Semantic Scholar`);
-        
-        const transformed = ssResult.value
-          .map(transformSemanticScholarPaper)
-          .filter(p => p !== null)
-          .map(p => ({
-            ...p,
-            source: 'Semantic Scholar',
-            sourceId: 'semantic-scholar'
-          }));
-        
-        papers.push(...transformed);
-      } else if (ssResult.status === 'rejected') {
-        console.error('⚠️ Semantic Scholar fetch failed:', ssResult.reason?.message);
-      }
-      
-      // Process arXiv results
-      if (arxivResult.status === 'fulfilled' && arxivResult.value.length > 0) {
-        console.log(`✅ Found ${arxivResult.value.length} papers from arXiv`);
-        
-        const arxivWithSource = arxivResult.value.map(p => ({
+      const transformed = ssResult.value
+        .map(transformSemanticScholarPaper)
+        .filter(p => p !== null)
+        .map(p => ({
           ...p,
-          source: 'arXiv',
-          sourceId: 'arxiv'
+          source: 'Semantic Scholar',
+          sourceId: 'semantic-scholar'
         }));
-        
-        papers.push(...arxivWithSource);
-      } else if (arxivResult.status === 'rejected') {
-        console.error('⚠️ arXiv fetch failed:', arxivResult.reason?.message);
-      }
+      
+      papers.push(...transformed);
+    } else if (ssResult.status === 'rejected') {
+      console.error('⚠️ Semantic Scholar fetch failed:', ssResult.reason?.message);
+    }
+    
+    // Process arXiv results
+    if (arxivResult.status === 'fulfilled' && arxivResult.value.length > 0) {
+      console.log(`✅ Found ${arxivResult.value.length} papers from arXiv`);
+      
+      const arxivWithSource = arxivResult.value.map(p => ({
+        ...p,
+        source: 'arXiv',
+        sourceId: 'arxiv'
+      }));
+      
+      papers.push(...arxivWithSource);
+    } else if (arxivResult.status === 'rejected') {
+      console.error('⚠️ arXiv fetch failed:', arxivResult.reason?.message);
+    }
+    
+    // Process OpenAlex results
+    if (openAlexResult.status === 'fulfilled' && openAlexResult.value.length > 0) {
+      console.log(`✅ Found ${openAlexResult.value.length} papers from OpenAlex`);
+      
+      const openAlexWithSource = openAlexResult.value.map(p => ({
+        ...p,
+        source: 'OpenAlex',
+        sourceId: 'openalex'
+      }));
+      
+      papers.push(...openAlexWithSource);
+    } else if (openAlexResult.status === 'rejected') {
+      console.error('⚠️ OpenAlex fetch failed:', openAlexResult.reason?.message);
+    }
+    
 
-      if (papers.length === 0) {
-        console.log(`⚠️ No papers found for ${window.label}, trying next window...`);
-        currentWindowIndex++;
-        continue;
-      }
-
+    if (papers.length > 0) {
       console.log(`📦 Total papers before deduplication: ${papers.length}`);
       
       // Remove duplicates within the new batch
@@ -335,6 +370,10 @@ async function updatePapers() {
       papersCache.forEach(p => {
         if (p.arxivId) existingIds.add(`arxiv:${p.arxivId}`);
         if (p.semanticScholarId) existingIds.add(`ss:${p.semanticScholarId}`);
+        if (p.openAlexId) existingIds.add(`openalex:${p.openAlexId}`);
+        if (p.crossrefId) existingIds.add(`crossref:${p.crossrefId}`);
+        if (p.pubmedId) existingIds.add(`pubmed:${p.pubmedId}`);
+        if (p.dblpKey) existingIds.add(`dblp:${p.dblpKey}`);
         existingIds.add(`title:${normalizeTitle(p.title)}`);
       });
 
@@ -343,23 +382,145 @@ async function updatePapers() {
         const arxivId = p.arxivId || extractArxivId(p.link);
         if (arxivId && existingIds.has(`arxiv:${arxivId}`)) return false;
         if (p.semanticScholarId && existingIds.has(`ss:${p.semanticScholarId}`)) return false;
+        if (p.openAlexId && existingIds.has(`openalex:${p.openAlexId}`)) return false;
+        if (p.crossrefId && existingIds.has(`crossref:${p.crossrefId}`)) return false;
+        if (p.pubmedId && existingIds.has(`pubmed:${p.pubmedId}`)) return false;
+        if (p.dblpKey && existingIds.has(`dblp:${p.dblpKey}`)) return false;
         const titleKey = normalizeTitle(p.title);
         if (existingIds.has(`title:${titleKey}`)) return false;
         return true;
       });
 
-      console.log(`🆕 Found ${trulyNewPapers.length} truly new papers from ${window.label} (${enrichedNewPapers.length - trulyNewPapers.length} were already in cache)`);
-      
-      if (trulyNewPapers.length > 0) {
-        break; // Found new papers, stop expanding
-      }
-      
-      currentWindowIndex++;
+      console.log(`🆕 Found ${trulyNewPapers.length} truly new papers (${enrichedNewPapers.length - trulyNewPapers.length} were already in cache)`);
     }
 
-    if (trulyNewPapers.length === 0) {
-      console.log('⚠️ No new papers found after all expansion attempts - database is comprehensive for available time windows');
+    // Only expand if we got ZERO papers total, not if we got papers that were duplicates
+    // If we got papers but they were all duplicates, we're up to date - don't expand!
+    if (trulyNewPapers.length === 0 && papers.length === 0 && lastPaperDate) {
+      // Only expand if we literally got no papers at all (not just duplicates)
+      console.log('⚠️ No papers found at all, expanding backwards to fill gaps...');
+      
+      // Define expansion strategy: go backwards from lastPaperDate
+      const expansionWindows = [
+        { days: 7, label: 'last 7 days' },
+        { days: 14, label: 'last 14 days' },
+        { days: 30, label: 'last 30 days' },
+        { days: 60, label: 'last 60 days' },
+        { days: 90, label: 'last 90 days' },
+        { days: 180, label: 'last 6 months' },
+        { days: 365, label: 'last year' },
+        { days: 730, label: 'last 2 years' },
+      ];
+      
+      for (let i = 0; i < expansionWindows.length; i++) {
+        const window = expansionWindows[i];
+        // Go backwards from lastPaperDate
+        const backwardThreshold = new Date(lastPaperDate);
+        backwardThreshold.setDate(backwardThreshold.getDate() - window.days);
+        backwardThreshold.setHours(0, 0, 0, 0);
+        
+        // Skip if this window goes back further than our oldest paper
+        if (oldestPaperDate && backwardThreshold < new Date(oldestPaperDate)) {
+          console.log(`⏭️ Skipping ${window.label} - already have papers from this period`);
+          continue;
+        }
+        
+        console.log(`🔍 Attempt ${i + 2}/${expansionWindows.length + 1}: Fetching papers from ${window.label} (threshold: ${backwardThreshold.toISOString()})`);
+        
+        const [ssResult2, arxivResult2, openAlexResult2] = await Promise.allSettled([
+          fetchLatestPapersFromSemanticScholar(100, currentYear, backwardThreshold),
+          fetchArXivLatest(100, backwardThreshold),
+          fetchLatestPapersFromOpenAlex(500, backwardThreshold)
+        ]);
+        
+        let papers2 = [];
+        
+        if (ssResult2.status === 'fulfilled' && ssResult2.value.length > 0) {
+          const transformed = ssResult2.value
+            .map(transformSemanticScholarPaper)
+            .filter(p => p !== null)
+            .map(p => ({
+              ...p,
+              source: 'Semantic Scholar',
+              sourceId: 'semantic-scholar'
+            }));
+          papers2.push(...transformed);
+        }
+        
+        if (arxivResult2.status === 'fulfilled' && arxivResult2.value.length > 0) {
+          const arxivWithSource = arxivResult2.value.map(p => ({
+            ...p,
+            source: 'arXiv',
+            sourceId: 'arxiv'
+          }));
+          papers2.push(...arxivWithSource);
+        }
+        
+        if (openAlexResult2.status === 'fulfilled' && openAlexResult2.value.length > 0) {
+          const openAlexWithSource = openAlexResult2.value.map(p => ({
+            ...p,
+            source: 'OpenAlex',
+            sourceId: 'openalex'
+          }));
+          papers2.push(...openAlexWithSource);
+        }
+        
+        
+        if (papers2.length === 0) {
+          console.log(`⚠️ No papers found for ${window.label}, trying next window...`);
+          continue;
+        }
+        
+        const uniqueNewPapers2 = removeDuplicatePapers(papers2);
+        const enrichedNewPapers2 = await enrichPapersWithCitations(uniqueNewPapers2);
+        
+        const existingIds2 = new Set();
+        papersCache.forEach(p => {
+          if (p.arxivId) existingIds2.add(`arxiv:${p.arxivId}`);
+          if (p.semanticScholarId) existingIds2.add(`ss:${p.semanticScholarId}`);
+          if (p.openAlexId) existingIds2.add(`openalex:${p.openAlexId}`);
+          if (p.crossrefId) existingIds2.add(`crossref:${p.crossrefId}`);
+          if (p.pubmedId) existingIds2.add(`pubmed:${p.pubmedId}`);
+          if (p.dblpKey) existingIds2.add(`dblp:${p.dblpKey}`);
+          existingIds2.add(`title:${normalizeTitle(p.title)}`);
+        });
+        
+        const newPapersFromWindow = enrichedNewPapers2.filter(p => {
+          const arxivId = p.arxivId || extractArxivId(p.link);
+          if (arxivId && existingIds2.has(`arxiv:${arxivId}`)) return false;
+          if (p.semanticScholarId && existingIds2.has(`ss:${p.semanticScholarId}`)) return false;
+          if (p.openAlexId && existingIds2.has(`openalex:${p.openAlexId}`)) return false;
+          if (p.crossrefId && existingIds2.has(`crossref:${p.crossrefId}`)) return false;
+          if (p.pubmedId && existingIds2.has(`pubmed:${p.pubmedId}`)) return false;
+          if (p.dblpKey && existingIds2.has(`dblp:${p.dblpKey}`)) return false;
+          const titleKey = normalizeTitle(p.title);
+          if (existingIds2.has(`title:${titleKey}`)) return false;
+          return true;
+        });
+        
+        console.log(`🆕 Found ${newPapersFromWindow.length} truly new papers from ${window.label} (${enrichedNewPapers2.length - newPapersFromWindow.length} were already in cache)`);
+        
+        if (newPapersFromWindow.length > 0) {
+          trulyNewPapers = newPapersFromWindow;
+          break; // Found new papers, stop expanding
+        }
+      }
+    }
+
+    // Handle different scenarios
+    if (trulyNewPapers.length === 0 && papers.length > 0) {
+      // We got papers but they were all duplicates - we're up to date!
+      console.log('✅ All fetched papers were already in database - system is up to date');
       console.log(`📊 Current database size: ${papersCache.length} papers`);
+      console.log(`📊 Date range: ${oldestPaperDate || 'N/A'} to ${lastPaperDate || 'N/A'}`);
+      lastFetchTime = new Date().toISOString();
+      await savePapersToDP();
+      return; // Don't expand, don't make more requests
+    } else if (trulyNewPapers.length === 0) {
+      // No papers found at all
+      console.log('⚠️ No new papers found - database is up to date');
+      console.log(`📊 Current database size: ${papersCache.length} papers`);
+      console.log(`📊 Date range: ${oldestPaperDate || 'N/A'} to ${lastPaperDate || 'N/A'}`);
       lastFetchTime = new Date().toISOString();
       await savePapersToDP();
       return;
@@ -426,16 +587,222 @@ async function updatePapers() {
     // Log source breakdown
     const arxivCount = limitedPapers.filter(p => p.sourceId === 'arxiv').length;
     const ssCount = limitedPapers.filter(p => p.sourceId === 'semantic-scholar').length;
+    const openAlexCount = limitedPapers.filter(p => p.sourceId === 'openalex').length;
     
     console.log(`✅ Updated database: ${papersCache.length} total papers (${trulyNewPapers.length} new fetched, ${actualAdded} actually added)`);
     console.log(`📈 Count change: ${previousCount} → ${newCount} (+${actualAdded})`);
     console.log(`📊 Date range: ${oldestPaperDate || 'N/A'} to ${lastPaperDate || 'N/A'}`);
-    console.log(`📊 Source breakdown: arXiv: ${arxivCount}, Semantic Scholar: ${ssCount}`);
+    console.log(`📊 Source breakdown: arXiv: ${arxivCount}, Semantic Scholar: ${ssCount}, OpenAlex: ${openAlexCount}`);
     console.log(`📊 Industry stats:`, industryStats);
+
+    // After successful update, check for gaps in historical coverage and fill them
+    if (lastPaperDate && oldestPaperDate) {
+      await fillHistoricalGaps();
+    }
 
   } catch (error) {
     console.error('❌ Error updating papers:', error.message);
     console.error(error.stack);
+  }
+}
+
+/**
+ * Fill gaps in historical paper coverage
+ * Identifies missing months and fetches papers for those periods
+ */
+async function fillHistoricalGaps() {
+  try {
+    if (!lastPaperDate || !oldestPaperDate) {
+      return; // Can't fill gaps without date range
+    }
+
+    const newest = new Date(lastPaperDate);
+    const oldest = new Date(oldestPaperDate);
+    const now = new Date();
+    
+    // Only fill gaps for the last 12 months to avoid fetching too much old data
+    const twelveMonthsAgo = new Date(now);
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    const startDate = oldest < twelveMonthsAgo ? twelveMonthsAgo : oldest;
+    
+    // Group existing papers by month to identify gaps
+    const papersByMonth = new Map();
+    papersCache.forEach(paper => {
+      const paperDate = new Date(paper.published || paper.updated || 0);
+      const monthKey = `${paperDate.getFullYear()}-${String(paperDate.getMonth() + 1).padStart(2, '0')}`;
+      if (!papersByMonth.has(monthKey)) {
+        papersByMonth.set(monthKey, 0);
+      }
+      papersByMonth.set(monthKey, papersByMonth.get(monthKey) + 1);
+    });
+
+    // Find missing months in the last 12 months
+    const missingMonths = [];
+    const currentMonth = new Date(startDate);
+    const endMonth = new Date(newest);
+    
+    while (currentMonth <= endMonth) {
+      const monthKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+      const paperCount = papersByMonth.get(monthKey) || 0;
+      
+      // If a month has very few papers (< 10), consider it a gap
+      if (paperCount < 10) {
+        const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+        const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
+        missingMonths.push({
+          monthKey,
+          start: monthStart,
+          end: monthEnd,
+          count: paperCount
+        });
+      }
+      
+      // Move to next month
+      currentMonth.setMonth(currentMonth.getMonth() + 1);
+    }
+
+    if (missingMonths.length === 0) {
+      console.log('✅ No significant gaps found in historical coverage');
+      return;
+    }
+
+    console.log(`🔍 Found ${missingMonths.length} months with gaps in coverage. Filling gaps...`);
+    
+    // Fetch papers for missing months (limit to 3 months per cycle to avoid rate limits)
+    const monthsToFill = missingMonths.slice(0, 3);
+    
+    for (const gap of monthsToFill) {
+      console.log(`📅 Filling gap for ${gap.monthKey} (currently has ${gap.count} papers)`);
+      
+      const [ssGapResult, arxivGapResult, openAlexGapResult] = await Promise.allSettled([
+        fetchLatestPapersFromSemanticScholar(100, gap.start.getFullYear(), gap.start),
+        fetchArXivLatest(100, gap.start),
+        fetchLatestPapersFromOpenAlex(200, gap.start) // Fetch 200 papers per gap month
+      ]);
+      
+      let gapPapers = [];
+      
+      if (ssGapResult.status === 'fulfilled' && ssGapResult.value.length > 0) {
+        const transformed = ssGapResult.value
+          .map(transformSemanticScholarPaper)
+          .filter(p => p !== null)
+          .map(p => ({
+            ...p,
+            source: 'Semantic Scholar',
+            sourceId: 'semantic-scholar'
+          }));
+        gapPapers.push(...transformed);
+      }
+      
+      if (arxivGapResult.status === 'fulfilled' && arxivGapResult.value.length > 0) {
+        const arxivWithSource = arxivGapResult.value.map(p => ({
+          ...p,
+          source: 'arXiv',
+          sourceId: 'arxiv'
+        }));
+        gapPapers.push(...arxivWithSource);
+      }
+      
+      if (openAlexGapResult.status === 'fulfilled' && openAlexGapResult.value.length > 0) {
+        const openAlexWithSource = openAlexGapResult.value.map(p => ({
+          ...p,
+          source: 'OpenAlex',
+          sourceId: 'openalex'
+        }));
+        gapPapers.push(...openAlexWithSource);
+      }
+      
+
+      // Filter papers to only include those from the gap month (with some flexibility)
+      const gapMonthStart = new Date(gap.start.getFullYear(), gap.start.getMonth(), 1);
+      const gapMonthEnd = new Date(gap.start.getFullYear(), gap.start.getMonth() + 1, 0, 23, 59, 59);
+      
+      // Allow papers from a few days before/after the month to account for date variations
+      const flexibleStart = new Date(gapMonthStart);
+      flexibleStart.setDate(flexibleStart.getDate() - 3);
+      const flexibleEnd = new Date(gapMonthEnd);
+      flexibleEnd.setDate(flexibleEnd.getDate() + 3);
+      
+      gapPapers = gapPapers.filter(paper => {
+        const paperDate = new Date(paper.published || paper.updated || 0);
+        return paperDate >= flexibleStart && paperDate <= flexibleEnd;
+      });
+
+      if (gapPapers.length === 0) {
+        console.log(`⚠️ No papers found for ${gap.monthKey}`);
+        continue;
+      }
+
+      // Remove duplicates within gap batch
+      const uniqueGapPapers = removeDuplicatePapers(gapPapers);
+      
+      // Check against existing cache
+      const existingIds = new Set();
+      papersCache.forEach(p => {
+        if (p.arxivId) existingIds.add(`arxiv:${p.arxivId}`);
+        if (p.semanticScholarId) existingIds.add(`ss:${p.semanticScholarId}`);
+        if (p.openAlexId) existingIds.add(`openalex:${p.openAlexId}`);
+        if (p.crossrefId) existingIds.add(`crossref:${p.crossrefId}`);
+        if (p.pubmedId) existingIds.add(`pubmed:${p.pubmedId}`);
+        if (p.dblpKey) existingIds.add(`dblp:${p.dblpKey}`);
+        existingIds.add(`title:${normalizeTitle(p.title)}`);
+      });
+
+      const newGapPapers = uniqueGapPapers.filter(p => {
+        const arxivId = p.arxivId || extractArxivId(p.link);
+        if (arxivId && existingIds.has(`arxiv:${arxivId}`)) return false;
+        if (p.semanticScholarId && existingIds.has(`ss:${p.semanticScholarId}`)) return false;
+        if (p.openAlexId && existingIds.has(`openalex:${p.openAlexId}`)) return false;
+        if (p.crossrefId && existingIds.has(`crossref:${p.crossrefId}`)) return false;
+        if (p.pubmedId && existingIds.has(`pubmed:${p.pubmedId}`)) return false;
+        if (p.dblpKey && existingIds.has(`dblp:${p.dblpKey}`)) return false;
+        const titleKey = normalizeTitle(p.title);
+        if (existingIds.has(`title:${titleKey}`)) return false;
+        return true;
+      });
+
+      if (newGapPapers.length > 0) {
+        console.log(`✅ Found ${newGapPapers.length} new papers for ${gap.monthKey}`);
+        
+        // Enrich and add to cache
+        const enrichedGapPapers = await enrichPapersWithCitations(newGapPapers);
+        const mergedWithGaps = [...enrichedGapPapers, ...papersCache];
+        
+        // Sort and limit
+        mergedWithGaps.sort((a, b) => {
+          const dateA = new Date(a.published || a.updated || 0);
+          const dateB = new Date(b.published || b.updated || 0);
+          return dateB.getTime() - dateA.getTime();
+        });
+        
+        const MAX_CACHE_SIZE = 10000;
+        papersCache = mergedWithGaps.slice(0, MAX_CACHE_SIZE);
+        
+        // Update oldest date if needed
+        if (mergedWithGaps.length > 0) {
+          const oldestPaper = mergedWithGaps[mergedWithGaps.length - 1];
+          const oldestDate = new Date(oldestPaper.published || oldestPaper.updated || 0);
+          if (!oldestPaperDate || oldestDate < new Date(oldestPaperDate)) {
+            oldestPaperDate = oldestDate.toISOString();
+          }
+        }
+        
+        // Save to database
+        await savePapersToDP();
+        console.log(`💾 Saved ${newGapPapers.length} papers from ${gap.monthKey} to database`);
+      } else {
+        console.log(`ℹ️ No new papers found for ${gap.monthKey} (all were duplicates)`);
+      }
+      
+      // Small delay between gap fills to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
+    console.log(`✅ Gap filling complete. Processed ${monthsToFill.length} months.`);
+    
+  } catch (error) {
+    console.error('❌ Error filling historical gaps:', error.message);
+    // Don't throw - gap filling is optional
   }
 }
 
@@ -734,6 +1101,27 @@ app.get('/api/papers/trends', (req, res) => {
 });
 
 /**
+ * GET /api/papers/total - Get total paper count in database (unfiltered)
+ * IMPORTANT: This route must come BEFORE /api/papers/:id to avoid route conflicts
+ */
+app.get('/api/papers/total', (req, res) => {
+  // Ensure we're reading the actual count from cache
+  const actualCount = papersCache.length;
+  
+  res.json({
+    total: actualCount,
+    lastUpdate: lastFetchTime,
+    oldestPaperDate: oldestPaperDate,
+    newestPaperDate: lastPaperDate,
+    sourceBreakdown: {
+      arxiv: papersCache.filter(p => p.sourceId === 'arxiv').length,
+      'semantic-scholar': papersCache.filter(p => p.sourceId === 'semantic-scholar').length,
+      openalex: papersCache.filter(p => p.sourceId === 'openalex').length
+    }
+  });
+});
+
+/**
  * GET /api/papers/:id - Get specific paper
  */
 app.get('/api/papers/:id', (req, res) => {
@@ -806,25 +1194,6 @@ app.post('/api/papers/batch', async (req, res) => {
     console.error('Error fetching papers batch:', error.message);
     res.status(500).json({ error: 'Failed to fetch papers' });
   }
-});
-
-/**
- * GET /api/papers/total - Get total paper count in database (unfiltered)
- */
-app.get('/api/papers/total', (req, res) => {
-  // Ensure we're reading the actual count from cache
-  const actualCount = papersCache.length;
-  
-  res.json({
-    total: actualCount,
-    lastUpdate: lastFetchTime,
-    oldestPaperDate: oldestPaperDate,
-    newestPaperDate: lastPaperDate,
-    sourceBreakdown: {
-      arxiv: papersCache.filter(p => p.sourceId === 'arxiv').length,
-      'semantic-scholar': papersCache.filter(p => p.sourceId === 'semantic-scholar').length
-    }
-  });
 });
 
 /**

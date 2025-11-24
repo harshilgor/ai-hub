@@ -255,9 +255,72 @@ export interface TechnologyPrediction {
   momentum: number;
   confidence: number;
   isEarlyStage: boolean;
-  leaderMentions: number;
-  patentCount: number;
+  leaderMentions?: number;
+  patentCount?: number;
   signalCount: number;
+  whyItWillBeBig?: {
+    summary: string;
+    keyAspects?: string[]; // What specific aspect is becoming big
+    companies?: string[]; // Companies/startups working on it
+    whatsNext?: string[]; // What's going to happen next
+    evidence: {
+      research: {
+        count: number;
+        trend: string;
+        keyExamples: Array<{
+          title: string;
+          venue?: string;
+          citations?: number;
+          date?: string;
+        }>;
+      };
+      commercial: {
+        count: number;
+        trend: string;
+        keyExamples: Array<{
+          title: string;
+          source?: string;
+          date?: string;
+        }>;
+      };
+      patents: {
+        count: number;
+        trend: string;
+        keyExamples: Array<{
+          title: string;
+          assignee?: string;
+          date?: string;
+        }>;
+      };
+      developer: {
+        count: number;
+        trend: string;
+        keyExamples: Array<{
+          name: string;
+          stars?: number;
+          date?: string;
+        }>;
+      };
+    };
+    connections: Array<{
+      type: string;
+      description: string;
+      sources: Array<{
+        type: string;
+        id: string;
+        title: string;
+      }>;
+      strength: number;
+    }>;
+    timeline: Array<{
+      date: string;
+      event: string;
+      type: string;
+      source: string;
+    }>;
+    risks: string[];
+    confidenceFactors: string[];
+  };
 }
 
 export interface LeaderQuote {
@@ -337,6 +400,72 @@ export async function getLeaderQuotes(): Promise<{
   return response.json();
 }
 
+// Technology Reads Types
+export interface TechnologyRead {
+  technology: string;
+  title: string;
+  summary: string;
+  fullRead: Array<{
+    heading: string;
+    content: string;
+  }>;
+  keyInsights: Array<{
+    type: string;
+    title: string;
+    description: string;
+    impact: string;
+  }>;
+  whatToBuild: Array<{
+    type: string;
+    title: string;
+    description: string;
+    opportunity: string;
+    action: string;
+  }>;
+  companies: string[];
+  topPapers: Array<{
+    title: string;
+    authors: string[];
+    venue?: string;
+    citations: number;
+    published: string;
+    link: string;
+  }>;
+  metrics: {
+    totalPapers: number;
+    recentPapers: number;
+    growthRate: number;
+    avgCitations: number;
+    momentum: number;
+    confidence: number;
+    signalCount: number;
+  };
+  trends: {
+    research: { direction: string; rate: number; description: string };
+    commercial: { direction: string; rate: number; description: string };
+    developer: { direction: string; rate: number; description: string };
+  };
+  categories: string[];
+  venues: string[];
+  predictionScore: number;
+  generatedBy?: string;
+  model?: string;
+}
+
+export async function getTechnologyReads(): Promise<{
+  reads: TechnologyRead[];
+  totalTechnologies: number;
+  lastUpdate: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/insights/technology-reads`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get technology reads: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 export async function getCombinedSignal(technology: string): Promise<{
   technology: string;
   signalStrength: {
@@ -350,6 +479,56 @@ export async function getCombinedSignal(technology: string): Promise<{
   
   if (!response.ok) {
     throw new Error(`Failed to get combined signal: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export interface VideoInsight {
+  videoId: string;
+  title: string;
+  publishedAt: string;
+  thumbnail: string;
+  link: string;
+  duration: number;
+  viewCount: number;
+  insights: {
+    technologies: string[];
+    companies: string[];
+    keyQuotes: Array<{
+      text: string;
+      speaker: string;
+      technology: string;
+      stance: string;
+      confidence: number;
+      timestamp: string;
+    }>;
+    stanceDistribution: {
+      pro: number;
+      con: number;
+      neutral: number;
+      mixed: number;
+    };
+    summary: string;
+  } | null;
+  processed: boolean;
+}
+
+export interface ChannelVideosResponse {
+  channel: {
+    id: string;
+    name: string;
+    channelId: string;
+  };
+  videos: VideoInsight[];
+  total: number;
+}
+
+export async function getChannelVideos(channelId: string, limit: number = 10): Promise<ChannelVideosResponse> {
+  const response = await fetch(`${API_BASE_URL}/channels/${channelId}/videos?limit=${limit}`);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get channel videos: ${response.statusText}`);
   }
 
   return response.json();

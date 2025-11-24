@@ -10,6 +10,8 @@ import {
   investorActivity
 } from '../data/mockData';
 import InsightsSection from '../components/InsightsSection';
+import TechnologyReadsSection from '../components/TechnologyReadsSection';
+import VideoInsightsSection from '../components/VideoInsightsSection';
 
 export default function HomePage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -61,6 +63,24 @@ export default function HomePage() {
 
       {/* Main Content */}
       <div className="max-w-[1400px] mx-auto px-6 py-8">
+
+        {/* Video Insights Section */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-12"
+        >
+          <VideoInsightsSection />
+        </motion.section>
+
+        {/* Technology Reads Section - What to Build Next */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-12"
+        >
+          <TechnologyReadsSection />
+        </motion.section>
 
         {/* AI-Powered Insights Section */}
         <motion.section

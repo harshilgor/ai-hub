@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@xyflow/react": "^12.9.3",
+    "assemblyai": "^4.19.0",
     "framer-motion": "^12.23.24",
     "lucide-react": "^0.554.0",
     "react": "^19.2.0",

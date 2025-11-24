@@ -80,10 +80,12 @@ function parseArXivEntry(entry) {
  * @param {number} maxResults - Maximum number of papers to fetch
  * @param {number} daysBack - How many days back to search
  */
-export async function fetchArXivPapers(maxResults = 100, daysBack = 7) {
+export async function fetchArXivPapers(maxResults = 300, daysBack = 7) {
   try {
     // Fetch papers from all major domains (not just AI)
     // Query all major arXiv categories across all subject classes
+    // Use a larger limit to get more papers (arXiv allows up to 2000)
+    const fetchLimit = Math.min(maxResults * 2, 1000);
     const searchQuery = ALL_ARXIV_CATEGORIES.map(cat => `cat:${cat}`).join(' OR ');
     
     const url = 'http://export.arxiv.org/api/query';
@@ -91,7 +93,7 @@ export async function fetchArXivPapers(maxResults = 100, daysBack = 7) {
       search_query: searchQuery,
       sortBy: 'submittedDate',
       sortOrder: 'descending',
-      max_results: maxResults
+      max_results: fetchLimit
     };
 
     const response = await axios.get(url, { params });
@@ -101,7 +103,7 @@ export async function fetchArXivPapers(maxResults = 100, daysBack = 7) {
       return [];
     }
 
-    const papers = result.feed.entry.map(parseArXivEntry);
+    const papers = result.feed.entry.map(parseArXivEntry).slice(0, maxResults);
 
     console.log(`✅ Fetched ${papers.length} papers from arXiv (all domains)`);
     return papers;
@@ -129,7 +131,8 @@ export async function fetchArXivLatest(maxResults = 100, hoursBackOrDate = 24) {
     }
     
     // Fetch more than needed to account for filtering (arXiv has many papers daily)
-    const fetchLimit = Math.min(maxResults * 3, 500); // Increased limit for all domains
+    // arXiv API allows up to 2000 results per query, but we'll use 1000 for safety
+    const fetchLimit = Math.min(maxResults * 5, 1000); // Increased limit to get more papers
     
     // Query all major arXiv categories from all domains
     const searchQuery = ALL_ARXIV_CATEGORIES.map(cat => `cat:${cat}`).join(' OR ');

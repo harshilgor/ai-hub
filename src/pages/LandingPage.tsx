@@ -19,7 +19,7 @@ export default function LandingPage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             {/* Copyright */}
             <div className="text-xs text-gray-500 dark:text-dark-text-secondary">
-              © Copyright 2025 AI Hub
+              © Copyright 2025 Insider Info
             </div>
 
             {/* Links */}

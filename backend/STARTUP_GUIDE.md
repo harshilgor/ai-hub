@@ -1,4 +1,4 @@
-# 🚀 AI Hub Backend - Startup Guide
+# 🚀 Insider Info Backend - Startup Guide
 
 ## ✅ What's Been Set Up
 

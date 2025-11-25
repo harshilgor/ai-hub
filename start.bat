@@ -1,5 +1,5 @@
 @echo off
-echo 🚀 Starting AI Hub with Real-Time Research Papers
+echo 🚀 Starting Insider Info with Real-Time Research Papers
 echo.
 
 REM Check if backend dependencies are installed
@@ -12,7 +12,7 @@ if not exist "backend\node_modules\" (
 
 REM Start backend in new window
 echo 🔧 Starting backend server...
-start "AI Hub Backend" cmd /k "cd backend && npm start"
+start "Insider Info Backend" cmd /k "cd backend && npm start"
 
 REM Wait for backend to start
 echo ⏳ Waiting for backend to initialize (10 seconds)...

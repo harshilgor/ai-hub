@@ -144,7 +144,7 @@ export async function fetchLatestPapersFromOpenAlex(limit = 500, dateThreshold =
               per_page: perPage,
               cursor: cursor,
               // Add email for better performance (optional but recommended)
-              mailto: 'ai-hub@example.com' // You can change this to your email
+              mailto: 'insider-info@example.com' // You can change this to your email
             }
           });
         });

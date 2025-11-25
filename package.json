@@ -1,10 +1,10 @@
 {
-  "name": "ai-investment-hub",
+  "name": "insider-info",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "description": "A comprehensive platform for tracking AI funding, exploring trends, and discovering the future of artificial intelligence investments",
-  "author": "AI Investment Intelligence Hub",
+  "author": "Insider Info",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

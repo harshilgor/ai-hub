@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo   AI Hub Backend Server Startup
+echo   Insider Info Backend Server Startup
 echo ========================================
 echo.
 echo Starting server with auto-reload...

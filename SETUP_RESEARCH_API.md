@@ -1,6 +1,6 @@
 # 🚀 Real-Time Research Papers Setup Guide
 
-Your AI Hub now fetches real research papers from arXiv and Semantic Scholar in real-time!
+Insider Info now fetches real research papers from arXiv and Semantic Scholar in real-time!
 
 ## 📋 Quick Start
 

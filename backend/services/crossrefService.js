@@ -228,7 +228,7 @@ export async function fetchLatestPapersFromCrossref(limit = 300, dateThreshold =
               offset: offset
             },
             headers: {
-              'User-Agent': 'AI-Hub/1.0 (mailto:ai-hub@example.com)' // Polite use header
+              'User-Agent': 'Insider-Info/1.0 (mailto:insider-info@example.com)' // Polite use header
             }
           });
         });

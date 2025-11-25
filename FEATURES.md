@@ -402,5 +402,5 @@ All 7 pages are fully functional with:
 - ✅ Clean code
 - ✅ Documentation
 
-**The AI Investment Intelligence Hub is ready to use!** 🎉
+**Insider Info is ready to use!** 🎉
 

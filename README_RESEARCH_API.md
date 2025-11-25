@@ -2,7 +2,7 @@
 
 ## 🎉 What's New
 
-Your AI Hub now has a **fully automated research paper aggregation system** that:
+Insider Info now has a **fully automated research paper aggregation system** that:
 
 ✅ Fetches latest AI papers from **Semantic Scholar** every 10 minutes  
 ✅ Enriches with **Semantic Scholar** citation data  
@@ -37,7 +37,7 @@ npm run dev
 ## 📁 What Was Created
 
 ```
-ai-hub/
+insider-info/
 ├── backend/                    # NEW! Backend server
 │   ├── services/
 │   │   ├── arxivService.js    # Fetches from arXiv API

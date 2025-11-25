@@ -1,6 +1,6 @@
 # Supabase Setup Guide
 
-This guide will help you set up Supabase for the AI Hub backend.
+This guide will help you set up Supabase for the Insider Info backend.
 
 ## Step 1: Get Supabase Credentials
 

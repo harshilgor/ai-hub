@@ -1,4 +1,4 @@
--- Supabase Database Schema for AI Hub
+-- Supabase Database Schema for Insider Info
 -- Run this in your Supabase SQL Editor
 
 -- Enable UUID extension

@@ -1,4 +1,4 @@
-# AI Hub Backend
+# Insider Info Backend
 
 Real-time research paper aggregator fetching from arXiv and Semantic Scholar.
 

@@ -1,8 +1,8 @@
 @echo off
-echo Starting AI Hub Backend Server in background...
+echo Starting Insider Info Backend Server in background...
 cd /d %~dp0
-start "AI Hub Backend" /min cmd /c "npm run dev"
+start "Insider Info Backend" /min cmd /c "npm run dev"
 echo Server started in background window.
-echo Check the "AI Hub Backend" window for server status.
+echo Check the "Insider Info Backend" window for server status.
 pause
 

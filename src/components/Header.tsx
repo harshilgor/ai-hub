@@ -16,7 +16,7 @@ export default function Header() {
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2 text-xl font-bold">
               <Brain className="w-7 h-7" />
-              <span>AI Hub</span>
+              <span>Insider Info</span>
             </Link>
 
             {/* Navigation */}

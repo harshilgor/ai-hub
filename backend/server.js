@@ -325,10 +325,12 @@ async function loadChannelsConfig() {
   if (isSupabaseConfigured()) {
     try {
       const channels = await channelsDB.getAll();
-      if (channels !== null) {
+      if (channels && channels.length > 0) {
         channelsConfig.channels = channels || [];
         console.log(`📺 Loaded ${channelsConfig.channels.length} channels from Supabase`);
         return;
+      } else {
+        console.log('⚠️ Supabase returned no channels, falling back to JSON');
       }
     } catch (error) {
       console.error('❌ Error loading channels from Supabase, falling back to JSON:', error.message);
@@ -2524,87 +2526,43 @@ async function checkAndFreePort(port) {
 
 // Initialize
 async function initialize() {
-  console.log('🚀 Starting AI Hub Backend Server...');
+  console.log('🚀 Starting Insider Info Backend Server...');
   
   // Check and free port if needed
   await checkAndFreePort(PORT);
   
-  // Load existing data
-  await loadPapersFromDB();
-  await loadPodcastsFromDB();
+  // STEP 1: Load channels config FIRST (needed for video fetching)
   await loadChannelsConfig();
-
-  // Initial channel scan to backfill latest videos
-  const hasAutoChannels = channelsConfig.channels.some(c => c.enabled && c.autoProcess);
-  if (hasAutoChannels) {
-    try {
-      console.log('📺 Running initial channel scan for auto-processed channels...');
-      await checkAllChannelsForNewVideos();
-    } catch (error) {
-      console.error('⚠️ Initial channel scan failed:', error.message);
-    }
-  }
   
-  // Fetch papers if cache is empty or old (>10 minutes)
-  const shouldFetch = !lastFetchTime || 
-    (new Date() - new Date(lastFetchTime)) > 10 * 60 * 1000;
-
-  if (shouldFetch) {
-    console.log('📥 Initial fetch of papers...');
-    await updatePapers();
-  }
-
-  // Schedule automatic updates every 10 minutes
-  // Schedule insights data refresh every 6 hours
-  cron.schedule('0 */6 * * *', async () => {
-    console.log('🔄 Refreshing insights data...');
-    try {
-      // Fetch fresh signals
-      const otherSignals = await aggregateAllSignals(30);
-      const paperSignals = papersCache.map(paper => ({
-        ...paper,
-        type: 'paper'
-      }));
-      allSignalsCache = [...paperSignals, ...otherSignals];
-      insightsCache.lastUpdate = new Date().toISOString();
-      console.log(`✅ Updated insights cache with ${allSignalsCache.length} signals`);
-    } catch (error) {
-      console.error('❌ Error refreshing insights:', error.message);
-    }
-  });
-
-  cron.schedule('*/10 * * * *', () => {
-    console.log('⏰ Scheduled update triggered (every 10 minutes)');
-    updatePapers();
-  });
-  
-  // Also schedule a daily refresh that resets the date threshold to ensure fresh papers
-  cron.schedule('0 0 * * *', () => {
-    console.log('🔄 Daily refresh - resetting date threshold to get fresh papers');
-    // Reset lastPaperDate to force fetching from last 7 days
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    lastPaperDate = sevenDaysAgo.toISOString();
-    updatePapers();
-  });
-  
-  // Schedule automatic channel checking
-  const channelCheckInterval = channelsConfig.settings.checkInterval || '0 */6 * * *';
-  cron.schedule(channelCheckInterval, async () => {
-    console.log('📺 Scheduled channel check triggered');
-    await checkAllChannelsForNewVideos();
-  });
-  
-  console.log(`📺 Channel auto-check scheduled: ${channelCheckInterval}`);
-
-  // Start server with error handling
+  // STEP 2: Start server immediately (skip papers/podcasts for now)
   const server = app.listen(PORT, () => {
     console.log(`✅ Server running on http://localhost:${PORT}`);
-    console.log(`📚 Serving ${papersCache.length} papers`);
-    console.log(`🔄 Auto-refresh every 10 minutes (100 papers per update)`);
-    console.log(`💡 Server will automatically fetch papers in the background`);
+    console.log('🎥 Video insights mode: ONLY video pipeline is active');
+    console.log('🛑 Papers, insights cache refresh, and cron jobs are paused');
   });
-
+  
+  // No cron jobs while in video-only mode
+  console.log('⏸️  Cron jobs disabled (focus on video insights only)');
+  
+  // STEP 3: Fetch videos in BACKGROUND (non-blocking)
+  setImmediate(async () => {
+    console.log('📺 Starting background video fetch...');
+    try {
+      const enabledChannels = channelsConfig.channels.filter(c => c.enabled);
+      if (enabledChannels.length > 0) {
+        console.log(`📺 Found ${enabledChannels.length} enabled channel(s), fetching videos in background...`);
+        await checkAllChannelsForNewVideos();
+        console.log('✅ Background video fetching and processing complete');
+      } else {
+        console.log('⚠️ No enabled channels found. Skipping video fetch.');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching videos in background:', error.message);
+      console.error(error.stack);
+      // Don't crash the server if video fetching fails
+    }
+  });
+  
   // Handle server errors gracefully
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
@@ -2615,7 +2573,7 @@ async function initialize() {
           const retryServer = app.listen(PORT, () => {
             console.log(`✅ Server running on http://localhost:${PORT}`);
             console.log(`📚 Serving ${papersCache.length} papers`);
-            console.log(`🔄 Auto-refresh every 10 minutes (100 papers per update)`);
+            console.log(`🎥 Serving ${podcastsCache.length} videos/podcasts`);
           });
         }, 2000);
       });

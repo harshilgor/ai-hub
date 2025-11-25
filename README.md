@@ -1,4 +1,4 @@
-# 🤖 AI Investment Intelligence Hub
+# 🤖 Insider Info
 
 A comprehensive platform for tracking AI funding, exploring trends, and discovering the future of artificial intelligence investments.
 

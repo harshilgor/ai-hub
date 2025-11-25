@@ -16,7 +16,7 @@ export default function CTASection() {
           </h2>
 
           <p className="text-base text-gray-600 dark:text-dark-text-secondary mb-8 max-w-2xl mx-auto">
-            Join researchers, investors, and innovators using AI Hub to stay ahead
+            Join researchers, investors, and innovators using Insider Info to stay ahead
           </p>
 
           <Link

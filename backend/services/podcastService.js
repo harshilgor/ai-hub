@@ -15,7 +15,9 @@ import path from 'path';
 import { tmpdir } from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import YoutubeTranscript from 'youtube-transcript';
+import YoutubeTranscriptModule from 'youtube-transcript';
+// Handle both default and named exports
+const YoutubeTranscript = YoutubeTranscriptModule.default || YoutubeTranscriptModule.YoutubeTranscript || YoutubeTranscriptModule;
 
 const execAsync = promisify(exec);
 
@@ -860,6 +862,9 @@ async function fetchTranscriptViaLibrary(videoId) {
   try {
     console.log(`   Trying youtube-transcript library...`);
     
+    // Ensure we have the correct YoutubeTranscript (handle both default and named exports)
+    const YT = YoutubeTranscript.default || YoutubeTranscript;
+    
     // Try multiple language options
     const languages = ['en', 'en-US', 'en-GB'];
     let transcriptItems = null;
@@ -867,7 +872,7 @@ async function fetchTranscriptViaLibrary(videoId) {
     
     for (const lang of languages) {
       try {
-        transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
+        transcriptItems = await YT.fetchTranscript(videoId, {
           lang: lang
         });
         if (transcriptItems && transcriptItems.length > 0) {
@@ -884,7 +889,7 @@ async function fetchTranscriptViaLibrary(videoId) {
     // If all languages failed, try without language specification (auto-detect)
     if (!transcriptItems || transcriptItems.length === 0) {
       try {
-        transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
+        transcriptItems = await YT.fetchTranscript(videoId);
       } catch (autoError) {
         lastError = autoError;
       }
@@ -972,12 +977,12 @@ async function downloadAudioWithYtDlp(videoId, outputPath) {
     }
     
     // Check duration if we got video info
+    // NOTE: We removed the 2-hour limit since we now have chunking support
+    // Videos of any length can be processed by splitting into chunks
     if (videoInfo && videoInfo.duration) {
       const duration = videoInfo.duration;
-      if (duration > 7200) {
-        console.log(`   ⚠️ Video is too long (${Math.floor(duration / 60)} minutes), skipping`);
-        return { success: false, error: 'Video too long' };
-      }
+      const durationMinutes = Math.floor(duration / 60);
+      console.log(`   Video duration: ${durationMinutes} minutes (will be chunked if > 25MB)`);
     }
     
     // Download audio using yt-dlp
@@ -1091,10 +1096,11 @@ async function splitAudioIntoChunks(audioPath, targetSizeMB = 20) {
       console.log(`   ⚠️ Bitrate not found in metadata, estimated: ${Math.round(bitrate / 1000)} kbps`);
     }
     
-    // Use a conservative bitrate estimate (128kbps) if still not available
+    // Use a conservative bitrate estimate (96kbps) if still not available
+    // We use 96kbps as default since we'll encode chunks at 96kbps anyway
     if (!bitrate || bitrate === 0 || isNaN(bitrate)) {
-      bitrate = 128000; // 128kbps default
-      console.log(`   ⚠️ Using default bitrate: 128 kbps`);
+      bitrate = 96000; // 96kbps default (matches our encoding settings)
+      console.log(`   ⚠️ Using default bitrate: 96 kbps`);
     }
     
     // Calculate chunk duration (in seconds) to achieve target size
@@ -1110,6 +1116,13 @@ async function splitAudioIntoChunks(audioPath, targetSizeMB = 20) {
     console.log(`   Bitrate: ${Math.round(bitrate / 1000)} kbps`);
     console.log(`   Chunk duration: ~${Math.floor(chunkDurationSeconds / 60)}:${String(Math.floor(chunkDurationSeconds % 60)).padStart(2, '0')} per chunk`);
     
+    // Warn if video is extremely long (will take a long time and many API calls)
+    if (numChunks > 20) {
+      console.warn(`   ⚠️ This video will create ${numChunks} chunks, which may take a long time to process`);
+      console.warn(`   Estimated processing time: ~${Math.ceil(numChunks * 2)}-${Math.ceil(numChunks * 5)} minutes`);
+      console.warn(`   Estimated API calls: ${numChunks} (costs will scale with video length)`);
+    }
+    
     const chunks = [];
     const baseName = audioPath.replace(/\.[^/.]+$/, ''); // Remove extension
     
@@ -1124,13 +1137,15 @@ async function splitAudioIntoChunks(audioPath, targetSizeMB = 20) {
       const chunkPath = `${baseName}_chunk_${i}.mp3`;
       
       // Use ffmpeg to extract chunk and convert to MP3
+      // Optimized settings for faster processing and smaller file size:
       // -ss: start time (input)
       // -t: duration
       // -acodec libmp3lame: encode as MP3
-      // -ab 128k: audio bitrate (128kbps to keep file size manageable)
-      // -ar 44100: sample rate
-      // -ac 2: stereo (or 1 for mono)
-      const splitCommand = `ffmpeg -i "${audioPath}" -ss ${startTime} -t ${chunkDuration} -acodec libmp3lame -ab 128k -ar 44100 -ac 2 -y "${chunkPath}"`;
+      // -ab 96k: lower bitrate (96kbps) for smaller files and faster processing (still good quality for speech)
+      // -ar 16000: lower sample rate (16kHz) - sufficient for speech, reduces file size significantly
+      // -ac 1: mono (speech doesn't need stereo, halves file size)
+      // These optimizations reduce file size by ~60% while maintaining speech quality
+      const splitCommand = `ffmpeg -i "${audioPath}" -ss ${startTime} -t ${chunkDuration} -acodec libmp3lame -ab 96k -ar 16000 -ac 1 -y "${chunkPath}"`;
       
       await execAsync(splitCommand, { timeout: 120000 }); // 2 minute timeout per chunk
       
@@ -1140,10 +1155,34 @@ async function splitAudioIntoChunks(audioPath, targetSizeMB = 20) {
       
       console.log(`   ✅ Created chunk ${i + 1}/${numChunks}: ${chunkSizeMB.toFixed(2)} MB (${formatTimestamp(startTime * 1000)} - ${formatTimestamp((startTime + chunkDuration) * 1000)})`);
       
-      // Verify chunk is under 25MB limit
+      // Verify chunk is under 25MB limit (Whisper API requirement)
       if (chunkSizeMB > 25) {
-        console.warn(`   ⚠️ Chunk ${i + 1} is ${chunkSizeMB.toFixed(2)} MB, which exceeds 25MB limit`);
-        console.warn(`   This may cause Whisper API to reject it. Consider reducing target chunk size.`);
+        console.error(`   ❌ Chunk ${i + 1} is ${chunkSizeMB.toFixed(2)} MB, which exceeds 25MB limit!`);
+        console.error(`   Whisper API will reject this chunk. Attempting to re-encode with lower bitrate...`);
+        
+        // Try to re-encode with lower bitrate and optimized settings to reduce size
+        const tempChunkPath = `${chunkPath}.temp`;
+        // Use optimized settings: 96kbps, 16kHz mono (same as our chunk creation)
+        const reencodeCommand = `ffmpeg -i "${chunkPath}" -acodec libmp3lame -ab 96k -ar 16000 -ac 1 -y "${tempChunkPath}"`;
+        
+        try {
+          await execAsync(reencodeCommand, { timeout: 120000 });
+          const reencodedStats = await fs.stat(tempChunkPath);
+          const reencodedSizeMB = reencodedStats.size / (1024 * 1024);
+          
+          if (reencodedSizeMB <= 25) {
+            // Replace original with re-encoded version
+            await fs.unlink(chunkPath);
+            await fs.rename(tempChunkPath, chunkPath);
+            console.log(`   ✅ Re-encoded chunk ${i + 1} to ${reencodedSizeMB.toFixed(2)} MB (under 25MB limit)`);
+          } else {
+            await fs.unlink(tempChunkPath).catch(() => {});
+            throw new Error(`Chunk ${i + 1} still too large after re-encoding: ${reencodedSizeMB.toFixed(2)} MB`);
+          }
+        } catch (reencodeError) {
+          await fs.unlink(tempChunkPath).catch(() => {});
+          throw new Error(`Failed to re-encode chunk ${i + 1}: ${reencodeError.message}`);
+        }
       }
       
       chunks.push({
@@ -1161,72 +1200,102 @@ async function splitAudioIntoChunks(audioPath, targetSizeMB = 20) {
 }
 
 /**
- * Transcribe a single audio chunk using Whisper API
+ * Transcribe a single audio chunk using Whisper API with retry logic
  * @param {string} chunkPath - Path to the audio chunk
  * @param {string} openaiApiKey - OpenAI API key
  * @param {number} offsetSeconds - Time offset to add to timestamps
+ * @param {number} retries - Number of retry attempts (default: 3)
  * @returns {Promise<string>} - Diarized transcript text
  */
-async function transcribeChunk(chunkPath, openaiApiKey, offsetSeconds = 0) {
-  try {
-    const audioBuffer = await fs.readFile(chunkPath);
-    
-    // Prepare form data for OpenAI Whisper API
-    const formData = new FormData();
-    formData.append('file', audioBuffer, {
-      filename: path.basename(chunkPath),
-      contentType: 'audio/mpeg'
-    });
-    formData.append('model', 'whisper-1');
-    formData.append('language', 'en');
-    formData.append('response_format', 'verbose_json'); // Get timestamps
-    
-    // Call OpenAI Whisper API
-    const response = await axios.post(
-      'https://api.openai.com/v1/audio/transcriptions',
-      formData,
-      {
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          ...formData.getHeaders()
-        },
-        timeout: 300000, // 5 minutes per chunk
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity
-      }
-    );
-    
-    if (response.data && response.data.segments) {
-      // Convert to diarized format with timestamps (adjusted by offset)
-      let diarizedText = '';
-      response.data.segments.forEach(segment => {
-        const start = (segment.start || 0) + offsetSeconds;
-        const text = segment.text || '';
-        
-        if (text && text.trim()) {
-          const timestamp = formatTimestamp(start * 1000);
-          diarizedText += `${timestamp} [Speaker]: ${text.trim()}\n`;
+async function transcribeChunk(chunkPath, openaiApiKey, offsetSeconds = 0, retries = 3) {
+  const audioBuffer = await fs.readFile(chunkPath);
+  
+  // Prepare form data for OpenAI Whisper API
+  const formData = new FormData();
+  formData.append('file', audioBuffer, {
+    filename: path.basename(chunkPath),
+    contentType: 'audio/mpeg'
+  });
+  formData.append('model', 'whisper-1');
+  formData.append('language', 'en');
+  formData.append('response_format', 'verbose_json'); // Get timestamps
+  
+  // Retry logic for transient errors
+  let lastError = null;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      // Call OpenAI Whisper API
+      const response = await axios.post(
+        'https://api.openai.com/v1/audio/transcriptions',
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            ...formData.getHeaders()
+          },
+          timeout: 600000, // 10 minutes per chunk (increased for large chunks)
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity
         }
-      });
-      
-      return diarizedText;
-    } else if (response.data && response.data.text) {
-      // Fallback: single text without timestamps
-      const timestamp = formatTimestamp(offsetSeconds * 1000);
-      return `${timestamp} [Speaker]: ${response.data.text}\n`;
-    }
+      );
     
-    return '';
-  } catch (error) {
-    const errorMsg = error.message || error.toString();
-    if (error.response) {
-      const status = error.response.status;
-      if (status === 413) {
+      if (response.data && response.data.segments) {
+        // Convert to diarized format with timestamps (adjusted by offset)
+        let diarizedText = '';
+        response.data.segments.forEach(segment => {
+          const start = (segment.start || 0) + offsetSeconds;
+          const text = segment.text || '';
+          
+          if (text && text.trim()) {
+            const timestamp = formatTimestamp(start * 1000);
+            diarizedText += `${timestamp} [Speaker]: ${text.trim()}\n`;
+          }
+        });
+        
+        return diarizedText;
+      } else if (response.data && response.data.text) {
+        // Fallback: single text without timestamps
+        const timestamp = formatTimestamp(offsetSeconds * 1000);
+        return `${timestamp} [Speaker]: ${response.data.text}\n`;
+      }
+      
+      return '';
+      
+    } catch (error) {
+      lastError = error;
+      const errorMsg = error.message || error.toString();
+      const status = error.response?.status;
+      
+      // Check if this is a retryable error
+      const isRetryable = status === 502 || // Bad Gateway
+                         status === 503 || // Service Unavailable
+                         status === 429 || // Rate Limit
+                         status === 408 || // Request Timeout
+                         errorMsg.includes('timeout') ||
+                         errorMsg.includes('ECONNRESET') ||
+                         errorMsg.includes('ETIMEDOUT');
+      
+      if (isRetryable && attempt < retries) {
+        // Exponential backoff with jitter to avoid thundering herd
+        const baseWaitTime = 1000 * Math.pow(2, attempt - 1);
+        const jitter = Math.random() * 1000; // Add random 0-1s jitter
+        const waitTime = Math.min(baseWaitTime + jitter, 30000); // Max 30s
+        console.warn(`   ⚠️ Chunk transcription failed (attempt ${attempt}/${retries}): ${errorMsg.substring(0, 100)}`);
+        console.warn(`   🔄 Retrying in ${(waitTime / 1000).toFixed(1)}s... (Status: ${status || 'Network Error'})`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue; // Retry
+      } else if (status === 413) {
         console.error(`   ❌ Chunk still too large (${status}), this shouldn't happen`);
+        throw new Error(`Chunk exceeds 25MB limit: ${status}`);
+      } else {
+        // Non-retryable error or max retries reached
+        throw error;
       }
     }
-    throw error;
   }
+  
+  // If we get here, all retries failed
+  throw lastError || new Error('Failed to transcribe chunk after all retries');
 }
 
 /**
@@ -1282,28 +1351,71 @@ async function fetchTranscriptViaWhisper(videoId) {
           return null;
         }
         
-        // Process each chunk sequentially
+        // Process chunks in parallel with concurrency limit to avoid rate limits
+        // This significantly reduces total processing time
+        const CONCURRENT_CHUNKS = 2; // Process 2 chunks at a time (balance speed vs rate limits)
         let fullTranscript = '';
-        const chunkFilesToCleanup = [];
+        const chunkFilesToCleanup = chunks.map(c => c.path);
+        const chunkResults = new Array(chunks.length).fill(null);
         
         try {
-          for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
-            chunkFilesToCleanup.push(chunk.path);
+          // Process chunks in batches to avoid overwhelming the API
+          for (let batchStart = 0; batchStart < chunks.length; batchStart += CONCURRENT_CHUNKS) {
+            const batchEnd = Math.min(batchStart + CONCURRENT_CHUNKS, chunks.length);
+            const batch = chunks.slice(batchStart, batchEnd);
             
-            console.log(`   📝 Transcribing chunk ${i + 1}/${chunks.length}...`);
+            console.log(`   📝 Transcribing chunks ${batchStart + 1}-${batchEnd}/${chunks.length} (parallel)...`);
             
-            const chunkTranscript = await transcribeChunk(
-              chunk.path,
-              openaiApiKey,
-              chunk.startTime
-            );
+            // Process batch in parallel
+            const batchPromises = batch.map(async (chunk, batchIndex) => {
+              const globalIndex = batchStart + batchIndex;
+              try {
+                const chunkTranscript = await transcribeChunk(
+                  chunk.path,
+                  openaiApiKey,
+                  chunk.startTime
+                );
+                
+                chunkResults[globalIndex] = {
+                  success: true,
+                  transcript: chunkTranscript,
+                  index: globalIndex + 1
+                };
+                
+                console.log(`   ✅ Chunk ${globalIndex + 1}/${chunks.length} transcribed successfully`);
+                return chunkResults[globalIndex];
+              } catch (chunkError) {
+                console.error(`   ❌ Failed to transcribe chunk ${globalIndex + 1}/${chunks.length}: ${chunkError.message}`);
+                chunkResults[globalIndex] = {
+                  success: false,
+                  transcript: null,
+                  error: chunkError.message,
+                  index: globalIndex + 1
+                };
+                
+                if (chunkError.message.includes('timeout')) {
+                  console.warn(`   ⚠️ Chunk ${globalIndex + 1} timed out. This chunk will be skipped.`);
+                }
+                return chunkResults[globalIndex];
+              }
+            });
             
-            if (chunkTranscript) {
-              fullTranscript += chunkTranscript;
-              console.log(`   ✅ Chunk ${i + 1}/${chunks.length} transcribed successfully`);
-            } else {
-              console.warn(`   ⚠️ Chunk ${i + 1}/${chunks.length} returned empty transcript`);
+            // Wait for batch to complete
+            await Promise.all(batchPromises);
+            
+            // Small delay between batches to avoid rate limiting
+            if (batchEnd < chunks.length) {
+              await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second between batches
+            }
+          }
+          
+          // Combine transcripts in order
+          for (let i = 0; i < chunkResults.length; i++) {
+            const result = chunkResults[i];
+            if (result && result.success && result.transcript) {
+              fullTranscript += result.transcript;
+            } else if (result && !result.success) {
+              console.warn(`   ⚠️ Chunk ${result.index} was skipped due to error`);
             }
           }
           
@@ -1510,9 +1622,92 @@ async function fetchTranscriptViaWhisper(videoId) {
 }
 
 /**
+ * Fetch transcript via Transcriptor AI API (Method 0 - Fastest if available)
+ * This API accepts a YouTube URL and returns the transcript directly
+ * @param {string} videoId - YouTube video ID
+ * @returns {Promise<string|null>} - Diarized transcript text or null if failed
+ */
+async function fetchTranscriptViaTranscriptorAI(videoId) {
+  try {
+    const FASTAPI_URL = process.env.TRANSCRIPTOR_AI_URL || 'https://transcripter-api.onrender.com/transcript';
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    
+    console.log(`   Trying FastAPI Transcriptor Service...`);
+    
+    // Call FastAPI service - GET /transcript?url=<youtube_url>
+    const response = await axios.get(
+      `${FASTAPI_URL}?url=${encodeURIComponent(videoUrl)}`,
+      {
+        timeout: 300000, // 5 minutes timeout
+        headers: {
+          'Accept': 'application/json'
+        }
+      }
+    );
+    
+    if (response.data && response.data.transcript) {
+      // Handle response format: { vid_url: "...", transcript: "..." }
+      let transcriptText = response.data.transcript;
+      
+      // If transcript is plain text, convert to diarized format with timestamps
+      if (typeof transcriptText === 'string' && transcriptText.trim()) {
+        // Split by sentences and add estimated timestamps
+        const sentences = transcriptText.split(/[.!?]+/).filter(s => s.trim().length > 10);
+        let diarizedText = '';
+        
+        sentences.forEach((sentence, index) => {
+          // Estimate 5 seconds per sentence (can be adjusted)
+          const timestamp = formatTimestamp(index * 5 * 1000);
+          diarizedText += `${timestamp} [Speaker]: ${sentence.trim()}\n`;
+        });
+        
+        if (diarizedText.trim()) {
+          console.log(`   ✅ Successfully fetched transcript via FastAPI Transcriptor (${sentences.length} segments)`);
+          return diarizedText;
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    const errorMsg = error.message || error.toString();
+    
+    // Don't log as error if API is not available - it's optional
+    if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('ENOTFOUND') || errorMsg.includes('ECONNRESET')) {
+      console.log(`   FastAPI Transcriptor service not available (service may not be running)`);
+      return null;
+    }
+    
+    if (error.response) {
+      const status = error.response.status;
+      if (status === 404) {
+        console.log(`   FastAPI Transcriptor endpoint not found`);
+        return null;
+      } else if (status === 500) {
+        console.log(`   FastAPI Transcriptor server error`);
+        return null;
+      } else if (status === 503) {
+        console.log(`   FastAPI Transcriptor service unavailable`);
+        return null;
+      } else if (status === 429) {
+        console.log(`   FastAPI Transcriptor rate limited`);
+        return null;
+      }
+    }
+    
+    // Only log if it's not a connection error
+    if (!errorMsg.includes('timeout') && !errorMsg.includes('ECONNREFUSED')) {
+      console.log(`   FastAPI Transcriptor failed: ${errorMsg.substring(0, 150)}`);
+    }
+    return null;
+  }
+}
+
+/**
  * Fetch transcript from YouTube video
- * Method 1: youtube-transcript library (fastest, if captions available)
- * Method 2: OpenAI Whisper API (fallback, works for videos without captions)
+ * Method 0: FastAPI Transcriptor Service (fastest, no audio download needed)
+ * Method 1: youtube-transcript library (fast, if captions available)
+ * Method 2: OpenAI Whisper API (fallback, requires audio download)
  */
 export async function fetchYouTubeTranscript(videoId, retries = 1) {
   try {
@@ -1534,16 +1729,26 @@ export async function fetchYouTubeTranscript(videoId, retries = 1) {
     
     console.log(`📹 Fetching transcript for ${actualVideoId}...`);
     
-    // Method 1: Try youtube-transcript library first (fastest, if captions available)
-    let transcript = await fetchTranscriptViaLibrary(actualVideoId);
+    // Method 0: Try FastAPI Transcriptor Service first (fastest, no audio download needed)
+    // Always try this first - it's the fastest method
+    let transcript = await fetchTranscriptViaTranscriptorAI(actualVideoId);
     
     if (transcript) {
       transcriptAvailabilityCache.set(actualVideoId, { available: true, timestamp: Date.now() });
       return transcript;
     }
     
-    // Method 2: Fallback to Whisper API (works for videos without captions)
-    console.log(`   youtube-transcript library failed, trying Whisper API...`);
+    // Method 1: Try youtube-transcript library (fast, if captions available)
+    console.log(`   FastAPI Transcriptor failed, trying youtube-transcript library...`);
+    transcript = await fetchTranscriptViaLibrary(actualVideoId);
+    
+    if (transcript) {
+      transcriptAvailabilityCache.set(actualVideoId, { available: true, timestamp: Date.now() });
+      return transcript;
+    }
+    
+    // Method 2: Fallback to Whisper API (works for videos without captions, requires audio download)
+    console.log(`   youtube-transcript library failed, trying Whisper API (will download audio)...`);
     transcript = await fetchTranscriptViaWhisper(actualVideoId);
     
     if (transcript) {
@@ -1551,10 +1756,10 @@ export async function fetchYouTubeTranscript(videoId, retries = 1) {
       return transcript;
     }
     
-    // Both methods failed
+    // All methods failed
     console.error(`❌ Failed to fetch transcript for video ${actualVideoId}`);
-    console.error(`   Both youtube-transcript library and Whisper API failed`);
-    console.error(`   Video may not have captions enabled and Whisper transcription failed`);
+    console.error(`   All methods failed: FastAPI Transcriptor, youtube-transcript library, and Whisper API`);
+    console.error(`   Video may not have captions enabled and transcription services failed`);
     transcriptAvailabilityCache.set(actualVideoId, { available: false, timestamp: Date.now() });
     return null;
     

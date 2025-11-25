@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Starting AI Hub with Real-Time Research Papers"
+echo "🚀 Starting Insider Info with Real-Time Research Papers"
 echo ""
 
 # Check if backend dependencies are installed

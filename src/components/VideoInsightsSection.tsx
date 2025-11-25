@@ -149,18 +149,42 @@ export default function VideoInsightsSection() {
                 </a>
               </div>
 
-              {/* Insights */}
+              {/* Insights - Always show section if video is processed */}
               {video.processed && video.insights ? (
                 <div className="space-y-4">
-                  {/* Technologies */}
-                  {video.insights.technologies.length > 0 && (
-                    <div>
+                  {/* Summary - Show prominently at the top */}
+                  {video.insights.summary && video.insights.summary.trim() ? (
+                    <div className="mb-4 p-4 bg-gradient-to-r from-primary-light/10 to-insight-light/10 dark:from-primary-dark/10 dark:to-insight-dark/10 rounded-lg border-l-4 border-primary-light dark:border-primary-dark">
                       <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className="w-4 h-4 text-primary-light dark:text-primary-dark" />
-                        <span className="text-sm font-semibold">Technologies Discussed</span>
+                        <MessageSquare className="w-5 h-5 text-primary-light dark:text-primary-dark" />
+                        <span className="text-sm font-semibold text-primary-light dark:text-primary-dark">Summary</span>
                       </div>
+                      <p className="text-sm text-light-text dark:text-dark-text leading-relaxed">
+                        {video.insights.summary}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mb-4 p-3 bg-light-bg dark:bg-dark-bg rounded-lg border border-light-border dark:border-dark-border">
+                      <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary italic">
+                        Summary will be available soon...
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Technologies - Always show section */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="w-4 h-4 text-primary-light dark:text-primary-dark" />
+                      <span className="text-sm font-semibold">Technologies Discussed</span>
+                      {video.insights.technologies.length > 0 && (
+                        <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                          ({video.insights.technologies.length})
+                        </span>
+                      )}
+                    </div>
+                    {video.insights.technologies.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
-                        {video.insights.technologies.slice(0, 5).map((tech) => (
+                        {video.insights.technologies.map((tech) => (
                           <span
                             key={tech}
                             className="px-3 py-1 bg-primary-light/10 dark:bg-primary-dark/10 text-primary-light dark:text-primary-dark rounded-full text-xs font-medium"
@@ -169,18 +193,27 @@ export default function VideoInsightsSection() {
                           </span>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary italic">
+                        No technologies identified yet
+                      </p>
+                    )}
+                  </div>
 
-                  {/* Companies */}
-                  {video.insights.companies.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Users className="w-4 h-4 text-primary-light dark:text-primary-dark" />
-                        <span className="text-sm font-semibold">Companies Mentioned</span>
-                      </div>
+                  {/* Companies - Always show section */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="w-4 h-4 text-primary-light dark:text-primary-dark" />
+                      <span className="text-sm font-semibold">Companies Mentioned</span>
+                      {video.insights.companies.length > 0 && (
+                        <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                          ({video.insights.companies.length})
+                        </span>
+                      )}
+                    </div>
+                    {video.insights.companies.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
-                        {video.insights.companies.slice(0, 5).map((company) => (
+                        {video.insights.companies.map((company) => (
                           <span
                             key={company}
                             className="px-3 py-1 bg-insight-light/10 dark:bg-insight-dark/10 text-insight-light dark:text-insight-dark rounded-full text-xs font-medium"
@@ -189,17 +222,26 @@ export default function VideoInsightsSection() {
                           </span>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary italic">
+                        No companies identified yet
+                      </p>
+                    )}
+                  </div>
 
-                  {/* Key Quotes */}
-                  {video.insights.keyQuotes.length > 0 && (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <MessageSquare className="w-4 h-4 text-primary-light dark:text-primary-dark" />
-                          <span className="text-sm font-semibold">Key Insights</span>
-                        </div>
+                  {/* Key Quotes - Always show section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-primary-light dark:text-primary-dark" />
+                        <span className="text-sm font-semibold">Key Insights</span>
+                        {video.insights.keyQuotes.length > 0 && (
+                          <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                            ({video.insights.keyQuotes.length})
+                          </span>
+                        )}
+                      </div>
+                      {video.insights.keyQuotes.length > 2 && (
                         <button
                           onClick={() => setExpandedVideo(expandedVideo === video.videoId ? null : video.videoId)}
                           className="text-xs text-primary-light dark:text-primary-dark hover:underline"
@@ -214,7 +256,9 @@ export default function VideoInsightsSection() {
                             </span>
                           )}
                         </button>
-                      </div>
+                      )}
+                    </div>
+                    {video.insights.keyQuotes.length > 0 ? (
                       <AnimatePresence>
                         {video.insights.keyQuotes.slice(0, expandedVideo === video.videoId ? video.insights.keyQuotes.length : 2).map((quote, idx) => (
                           <motion.div
@@ -226,37 +270,43 @@ export default function VideoInsightsSection() {
                           >
                             <div className="flex items-start justify-between mb-1">
                               <span className="text-xs font-medium text-primary-light dark:text-primary-dark">
-                                {quote.speaker}
+                                {quote.speaker || 'Speaker'}
                               </span>
                               <span className={`text-xs px-2 py-0.5 rounded ${
                                 quote.stance === 'pro' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
                                 quote.stance === 'con' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
                                 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
                               }`}>
-                                {quote.stance}
+                                {quote.stance || 'neutral'}
                               </span>
                             </div>
                             <p className="text-sm text-light-text dark:text-dark-text italic">
                               "{quote.text}"
                             </p>
                             <div className="mt-2 flex items-center gap-2">
-                              <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                                {quote.technology}
-                              </span>
+                              {quote.technology && (
+                                <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                                  {quote.technology}
+                                </span>
+                              )}
                               {quote.timestamp && (
                                 <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                                  • {quote.timestamp}
+                                  {quote.technology && '• '}{quote.timestamp}
                                 </span>
                               )}
                             </div>
                           </motion.div>
                         ))}
                       </AnimatePresence>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary italic">
+                        Key insights will be extracted soon...
+                      </p>
+                    )}
+                  </div>
 
-                  {/* Stance Distribution */}
-                  {video.insights.stanceDistribution && (
+                  {/* Stance Distribution - Always show section */}
+                  {video.insights.stanceDistribution && Object.keys(video.insights.stanceDistribution).length > 0 ? (
                     <div className="pt-4 border-t border-light-border dark:border-dark-border">
                       <div className="flex items-center gap-2 mb-2">
                         <TrendingUp className="w-4 h-4 text-primary-light dark:text-primary-dark" />
@@ -279,19 +329,24 @@ export default function VideoInsightsSection() {
                         ))}
                       </div>
                     </div>
-                  )}
-
-                  {/* Summary */}
-                  {video.insights.summary && (
+                  ) : (
                     <div className="pt-4 border-t border-light-border dark:border-dark-border">
-                      <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
-                        {video.insights.summary}
+                      <div className="flex items-center gap-2 mb-2">
+                        <TrendingUp className="w-4 h-4 text-primary-light dark:text-primary-dark" />
+                        <span className="text-sm font-semibold">Sentiment Breakdown</span>
+                      </div>
+                      <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary italic">
+                        Sentiment analysis will be available soon...
                       </p>
                     </div>
                   )}
+
                 </div>
               ) : (
                 <div className="text-center py-4">
+                  <div className="animate-pulse mb-2">
+                    <div className="h-2 bg-light-border dark:bg-dark-border rounded w-3/4 mx-auto"></div>
+                  </div>
                   <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
                     Processing insights... This video will be analyzed soon.
                   </p>

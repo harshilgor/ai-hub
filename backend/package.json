@@ -1,7 +1,7 @@
 {
-  "name": "ai-hub-backend",
+  "name": "insider-info-backend",
   "version": "1.0.0",
-  "description": "Backend service for AI Hub - fetches research papers from arXiv and Semantic Scholar",
+  "description": "Backend service for Insider Info - fetches research papers from arXiv and Semantic Scholar",
   "main": "server.js",
   "type": "module",
   "scripts": {

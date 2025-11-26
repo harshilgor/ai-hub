@@ -1812,21 +1812,40 @@ export async function processYouTubeVideo(videoId, metadata = {}) {
   // Generate deep breakdown (async, don't block main processing)
   try {
     const { generateVideoBreakdown } = await import('./videoBreakdownService.js');
+    const { ingestBreakdownIntoGraph } = await import('./insightIngestionService.js');
+    const { runCorrelationPass } = await import('./correlationService.js');
+    
     generateVideoBreakdown(videoId, transcriptText, {
       ...metadata,
       title: metadata.title || metadata.episode,
       channel: metadata.podcast,
       duration: metadata.duration
-    }).then(breakdown => {
+    }).then(async breakdown => {
       if (breakdown) {
         result.breakdown = breakdown;
+        // Update the podcast in DB with breakdown
+        if (podcastsDB && typeof podcastsDB.updateBreakdown === 'function') {
+          await podcastsDB.updateBreakdown(videoId, breakdown);
+        }
         console.log(`✅ Generated deep breakdown for video ${videoId}`);
+        
+        // --- DEEP CORRELATION ENGINE TRIGGER ---
+        // 1. Ingest atoms
+        await ingestBreakdownIntoGraph(breakdown);
+        
+        // 2. Find correlations (background)
+        runCorrelationPass(20).catch(err => 
+          console.error(`⚠️ Correlation pass failed: ${err.message}`)
+        );
+      } else {
+        console.warn(`⚠️ Failed to generate deep breakdown for video ${videoId}`);
       }
-    }).catch(err => {
-      console.error(`⚠️ Breakdown generation failed (non-blocking): ${err.message}`);
+    })
+    .catch(error => {
+      console.error(`❌ Error generating deep breakdown for video ${videoId}:`, error);
     });
   } catch (error) {
-    console.error(`⚠️ Could not import breakdown service: ${error.message}`);
+    console.error(`⚠️ Could not import breakdown/ingestion services: ${error.message}`);
   }
   
   console.log(`✅ Successfully processed video ${videoId}:`);

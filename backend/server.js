@@ -41,6 +41,9 @@ import {
   aggregateViews
 } from './services/podcastService.js';
 import {
+  runDailySynthesis
+} from './services/synthesisService.js';
+import {
   extractChannelId,
   fetchChannelVideos,
   checkChannelForNewVideos
@@ -2285,6 +2288,151 @@ app.post('/api/channels/:id/videos/process', async (req, res) => {
   }
 });
 
+async function generateTechnologyReads({ force = false, reason = 'api' } = {}) {
+  // Check cache freshness
+  const now = new Date();
+  const lastGenerated = technologyReadsCache.lastGenerated 
+    ? new Date(technologyReadsCache.lastGenerated)
+    : null;
+  
+  const isSameDay = lastGenerated && 
+    lastGenerated.getDate() === now.getDate() &&
+    lastGenerated.getMonth() === now.getMonth() &&
+    lastGenerated.getFullYear() === now.getFullYear();
+  
+  if (!force && isSameDay && technologyReadsCache.reads.length >= technologyReadsCache.dailyLimit) {
+    console.log(`📚 Returning cached reads (${technologyReadsCache.reads.length}) for reason=${reason}`);
+    return {
+      reads: technologyReadsCache.reads,
+      totalTechnologies: technologyReadsCache.reads.length,
+      lastUpdate: technologyReadsCache.lastGenerated,
+      cached: true,
+      message: `Showing ${technologyReadsCache.reads.length} detailed reads generated today. New reads will be generated tomorrow.`
+    };
+  }
+  
+  console.log(`📚 Generating detailed technology reads from ${papersCache.length} papers (force=${force}, reason=${reason})...`);
+  console.log(`🎯 Daily limit: ${technologyReadsCache.dailyLimit} reads (very detailed)`);
+  
+  if (papersCache.length === 0) {
+    console.log('⚠️ No papers in cache');
+    return {
+      reads: [],
+      totalTechnologies: 0,
+      lastUpdate: lastFetchTime || new Date().toISOString(),
+      message: 'No papers available yet. Please wait for papers to be fetched.'
+    };
+  }
+  
+  const technologies = extractTechnologiesFromPapers(papersCache);
+  console.log(`📊 Found ${technologies.length} unique technologies`);
+  
+  if (technologies.length === 0) {
+    console.log('⚠️ No technologies extracted. Sample paper tags:', 
+      papersCache.slice(0, 3).map(p => ({ 
+        title: p.title?.substring(0, 50), 
+        tags: p.tags?.slice(0, 3),
+        categories: p.categories?.slice(0, 3)
+      }))
+    );
+    return {
+      reads: [],
+      totalTechnologies: 0,
+      lastUpdate: lastFetchTime || new Date().toISOString(),
+      message: 'No technologies found in papers. Papers may not have tags or categories.'
+    };
+  }
+  
+  const minPapers = papersCache.length > 200 ? 5 : 3;
+  const allTechs = Array.from(technologies.values());
+  
+  const emerging = allTechs
+    .filter(tech => tech.count >= minPapers)
+    .sort((a, b) => {
+      const scoreA = (a.count * 2) + (a.recentCount * 5) + (a.avgCitations * 0.2) + (a.growthRate * 0.5) + (a.papers.length * 0.1);
+      const scoreB = (b.count * 2) + (b.recentCount * 5) + (b.avgCitations * 0.2) + (b.growthRate * 0.5) + (b.papers.length * 0.1);
+      return scoreB - scoreA;
+    })
+    .slice(0, technologyReadsCache.dailyLimit);
+  
+  console.log(`🚀 Identified ${emerging.length} high-quality technologies for detailed reads (min papers: ${minPapers}, total techs: ${allTechs.length})`);
+  
+  const buildResponse = (reads, totalTechs, cached = false, message) => ({
+    reads,
+    totalTechnologies: totalTechs,
+    lastUpdate: technologyReadsCache.lastGenerated || now.toISOString(),
+    cached,
+    message,
+    dailyLimit: technologyReadsCache.dailyLimit
+  });
+  
+  if (emerging.length === 0) {
+    console.log('📋 Using fallback: top technologies by count');
+    const fallback = allTechs
+      .sort((a, b) => b.count - a.count)
+      .slice(0, technologyReadsCache.dailyLimit);
+    
+    if (fallback.length === 0) {
+      return {
+        reads: [],
+        totalTechnologies: technologies.length,
+        lastUpdate: lastFetchTime || new Date().toISOString(),
+        message: 'No technologies found matching criteria.',
+        dailyLimit: technologyReadsCache.dailyLimit
+      };
+    }
+    
+    const allSignals = await getAllSignals();
+    console.log(`✨ Generating ${fallback.length} detailed reads (fallback)...`);
+    
+    const reads = await Promise.all(
+      fallback.map(async (tech, index) => {
+        try {
+          console.log(`   [${index + 1}/${fallback.length}] Generating detailed read for: ${tech.name}`);
+          return await generateTechnologyRead(tech, allSignals, papersCache);
+        } catch (error) {
+          console.error(`Error generating read for ${tech.name}:`, error.message);
+          return null;
+        }
+      })
+    );
+    
+    const validReads = reads.filter(read => read !== null)
+      .sort((a, b) => (b.predictionScore || 0) - (a.predictionScore || 0));
+    
+    technologyReadsCache.reads = validReads;
+    technologyReadsCache.lastGenerated = now.toISOString();
+    
+    return buildResponse(validReads, technologies.length);
+  }
+  
+  const allSignals = await getAllSignals();
+  console.log(`✨ Generating ${emerging.length} very detailed reads (reason=${reason})...`);
+  
+  const reads = await Promise.all(
+    emerging.map(async (tech, index) => {
+      try {
+        console.log(`   [${index + 1}/${emerging.length}] Generating detailed read for: ${tech.name}`);
+        return await generateTechnologyRead(tech, allSignals, papersCache);
+      } catch (error) {
+        console.error(`Error generating read for ${tech.name}:`, error.message);
+        console.error('Stack:', error.stack);
+        return null;
+      }
+    })
+  );
+  
+  const validReads = reads.filter(read => read !== null)
+    .sort((a, b) => (b.predictionScore || 0) - (a.predictionScore || 0));
+  
+  technologyReadsCache.reads = validReads;
+  technologyReadsCache.lastGenerated = now.toISOString();
+  
+  console.log(`✅ Generated ${validReads.length} detailed technology reads (cached for today)`);
+  
+  return buildResponse(validReads, technologies.length);
+}
+
 /**
  * GET /api/insights/technology-reads - Get comprehensive reads on emerging technologies
  * Analyzes all papers to find technologies and generates detailed insights
@@ -2292,160 +2440,9 @@ app.post('/api/channels/:id/videos/process', async (req, res) => {
  */
 app.get('/api/insights/technology-reads', async (req, res) => {
   try {
-    // Check if we have cached reads from today
-    const now = new Date();
-    const lastGenerated = technologyReadsCache.lastGenerated 
-      ? new Date(technologyReadsCache.lastGenerated)
-      : null;
-    
-    const isSameDay = lastGenerated && 
-      lastGenerated.getDate() === now.getDate() &&
-      lastGenerated.getMonth() === now.getMonth() &&
-      lastGenerated.getFullYear() === now.getFullYear();
-    
-    // If we have reads from today and we've hit the limit, return cached
-    if (isSameDay && technologyReadsCache.reads.length >= technologyReadsCache.dailyLimit) {
-      console.log(`📚 Returning cached reads (${technologyReadsCache.reads.length} reads from today)`);
-      return res.json({
-        reads: technologyReadsCache.reads,
-        totalTechnologies: technologyReadsCache.reads.length,
-        lastUpdate: technologyReadsCache.lastGenerated,
-        cached: true,
-        message: `Showing ${technologyReadsCache.reads.length} detailed reads generated today. New reads will be generated tomorrow.`
-      });
-    }
-    
-    console.log('📚 Generating detailed technology reads from', papersCache.length, 'papers...');
-    console.log(`🎯 Daily limit: ${technologyReadsCache.dailyLimit} reads (very detailed)`);
-    
-    if (papersCache.length === 0) {
-      console.log('⚠️ No papers in cache');
-      return res.json({
-        reads: [],
-        totalTechnologies: 0,
-        lastUpdate: lastFetchTime || new Date().toISOString(),
-        message: 'No papers available yet. Please wait for papers to be fetched.'
-      });
-    }
-    
-    // Extract all technologies from papers
-    const technologies = extractTechnologiesFromPapers(papersCache);
-    console.log(`📊 Found ${technologies.length} unique technologies`);
-    
-    if (technologies.length === 0) {
-      console.log('⚠️ No technologies extracted. Sample paper tags:', 
-        papersCache.slice(0, 3).map(p => ({ 
-          title: p.title?.substring(0, 50), 
-          tags: p.tags?.slice(0, 3),
-          categories: p.categories?.slice(0, 3)
-        }))
-      );
-      return res.json({
-        reads: [],
-        totalTechnologies: 0,
-        lastUpdate: lastFetchTime || new Date().toISOString(),
-        message: 'No technologies found in papers. Papers may not have tags or categories.'
-      });
-    }
-    
-    // Filter for high-quality technologies (more strict for detailed reads)
-    const minPapers = papersCache.length > 200 ? 5 : 3; // Higher threshold for detailed reads
-    const allTechs = Array.from(technologies.values());
-    
-    const emerging = allTechs
-      .filter(tech => tech.count >= minPapers)
-      .sort((a, b) => {
-        // Enhanced scoring for detailed reads - prioritize quality
-        const scoreA = (a.count * 2) + (a.recentCount * 5) + (a.avgCitations * 0.2) + (a.growthRate * 0.5) + (a.papers.length * 0.1);
-        const scoreB = (b.count * 2) + (b.recentCount * 5) + (b.avgCitations * 0.2) + (b.growthRate * 0.5) + (b.papers.length * 0.1);
-        return scoreB - scoreA;
-      })
-      .slice(0, technologyReadsCache.dailyLimit); // Top 20 for detailed reads
-    
-    console.log(`🚀 Identified ${emerging.length} high-quality technologies for detailed reads (min papers: ${minPapers}, total techs: ${allTechs.length})`);
-    
-    if (emerging.length === 0) {
-      // Fallback: use top technologies by count
-      console.log('📋 Using fallback: top technologies by count');
-      const fallback = allTechs
-        .sort((a, b) => b.count - a.count)
-        .slice(0, technologyReadsCache.dailyLimit);
-      
-      if (fallback.length === 0) {
-        return res.json({
-          reads: [],
-          totalTechnologies: technologies.length,
-          lastUpdate: lastFetchTime || new Date().toISOString(),
-          message: 'No technologies found matching criteria.'
-        });
-      }
-      
-      const allSignals = await getAllSignals();
-      console.log(`✨ Generating ${fallback.length} detailed reads (this may take a few minutes)...`);
-      
-      const reads = await Promise.all(
-        fallback.map(async (tech, index) => {
-          try {
-            console.log(`   [${index + 1}/${fallback.length}] Generating detailed read for: ${tech.name}`);
-            return await generateTechnologyRead(tech, allSignals, papersCache);
-          } catch (error) {
-            console.error(`Error generating read for ${tech.name}:`, error.message);
-            return null;
-          }
-        })
-      );
-      
-      const validReads = reads.filter(read => read !== null);
-      validReads.sort((a, b) => (b.predictionScore || 0) - (a.predictionScore || 0));
-      
-      // Cache the reads
-      technologyReadsCache.reads = validReads;
-      technologyReadsCache.lastGenerated = now.toISOString();
-      
-      return res.json({
-        reads: validReads,
-        totalTechnologies: technologies.length,
-        lastUpdate: technologyReadsCache.lastGenerated,
-        cached: false
-      });
-    }
-    
-    // Get all signals
-    const allSignals = await getAllSignals();
-    
-    // Generate detailed reads for each technology (with AI if available)
-    console.log(`✨ Generating ${emerging.length} very detailed reads (this may take a few minutes)...`);
-    const reads = await Promise.all(
-      emerging.map(async (tech, index) => {
-        try {
-          console.log(`   [${index + 1}/${emerging.length}] Generating detailed read for: ${tech.name}`);
-          return await generateTechnologyRead(tech, allSignals, papersCache);
-        } catch (error) {
-          console.error(`Error generating read for ${tech.name}:`, error.message);
-          console.error('Stack:', error.stack);
-          return null;
-        }
-      })
-    );
-    
-    const validReads = reads.filter(read => read !== null);
-    
-    // Sort by prediction score
-    validReads.sort((a, b) => (b.predictionScore || 0) - (a.predictionScore || 0));
-    
-    // Cache the reads
-    technologyReadsCache.reads = validReads;
-    technologyReadsCache.lastGenerated = now.toISOString();
-    
-    console.log(`✅ Generated ${validReads.length} detailed technology reads (cached for today)`);
-    
-    res.json({
-      reads: validReads,
-      totalTechnologies: technologies.length,
-      lastUpdate: technologyReadsCache.lastGenerated,
-      cached: false,
-      dailyLimit: technologyReadsCache.dailyLimit
-    });
+    const force = req.query.force === 'true';
+    const result = await generateTechnologyReads({ force, reason: 'api' });
+    res.json(result);
   } catch (error) {
     console.error('Error generating technology reads:', error);
     console.error('Stack:', error.stack);
@@ -2514,6 +2511,56 @@ async function getAllSignals() {
   return [...paperSignals, ...podcastSignals, ...otherSignals];
 }
 
+// ============================================
+// META-NARRATIVE & GRAPH API
+// ============================================
+
+/**
+ * GET /api/narratives - Get synthesized meta-narratives
+ */
+app.get('/api/narratives', async (req, res) => {
+  if (!isSupabaseConfigured()) {
+    return res.json({ narratives: [], error: 'Supabase not configured' });
+  }
+  
+  try {
+    const { supabase } = await import('./services/supabaseService.js');
+    const { data, error } = await supabase
+      .from('meta_narratives')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+      
+    if (error) throw error;
+    res.json({ narratives: data || [] });
+  } catch (error) {
+    console.error('Error fetching narratives:', error);
+    res.status(500).json({ error: 'Failed to fetch narratives' });
+  }
+});
+
+/**
+ * POST /api/narratives/generate - Manually trigger synthesis for a topic
+ */
+app.post('/api/narratives/generate', async (req, res) => {
+  const { topic } = req.body;
+  if (!topic) return res.status(400).json({ error: 'Topic required' });
+  
+  try {
+    const { generateMetaNarrativeForTopic } = await import('./services/synthesisService.js');
+    const narrative = await generateMetaNarrativeForTopic(topic);
+    
+    if (narrative) {
+      res.json({ success: true, narrative });
+    } else {
+      res.status(404).json({ error: 'Could not generate narrative (insufficient data)' });
+    }
+  } catch (error) {
+    console.error('Error generating narrative:', error);
+    res.status(500).json({ error: 'Failed to generate narrative' });
+  }
+});
+
 /**
  * GET /api/health - Health check
  */
@@ -2575,36 +2622,104 @@ async function initialize() {
   // Check and free port if needed
   await checkAndFreePort(PORT);
   
-  // STEP 1: Load channels config FIRST (needed for video fetching)
+  // STEP 1: Load papers from database FIRST
+  await loadPapersFromDB();
+  await loadPodcastsFromDB();
+  
+  // STEP 2: Load channels config (needed for video fetching)
   await loadChannelsConfig();
   
-  // STEP 2: Start server immediately (skip papers/podcasts for now)
+  // STEP 3: Start server
   const server = app.listen(PORT, () => {
     console.log(`✅ Server running on http://localhost:${PORT}`);
-    console.log('🎥 Video insights mode: ONLY video pipeline is active');
-    console.log('🛑 Papers, insights cache refresh, and cron jobs are paused');
+    console.log(`📚 Serving ${papersCache.length} papers`);
+    console.log(`🎥 Serving ${podcastsCache.length} videos/podcasts`);
   });
   
-  // No cron jobs while in video-only mode
-  console.log('⏸️  Cron jobs disabled (focus on video insights only)');
-  
-  // STEP 3: Fetch videos in BACKGROUND (non-blocking)
-  setImmediate(async () => {
-    console.log('📺 Starting background video fetch...');
+  // STEP 4: Set up cron jobs for automated paper fetching
+  // Daily paper fetch at 8:00 AM (UTC) - adjust timezone as needed
+  // Note: Render uses UTC timezone, so 8 AM UTC = 12 AM PST / 3 AM EST
+  // To run at 8 AM PST, use: '0 8 * * *' and set TZ=America/Los_Angeles in Render env
+  const paperFetchCron = process.env.PAPER_FETCH_CRON || '0 8 * * *'; // Default: 8 AM UTC
+  cron.schedule(paperFetchCron, async () => {
+    console.log('⏰ Daily paper fetch triggered at 8 AM');
     try {
+      await updatePapers();
+      console.log('✅ Daily paper fetch completed');
+    } catch (error) {
+      console.error('❌ Error in daily paper fetch:', error.message);
+    }
+  }, {
+    scheduled: true,
+    timezone: process.env.TZ || 'UTC'
+  });
+  console.log(`⏰ Daily paper fetch scheduled: ${paperFetchCron} (${process.env.TZ || 'UTC'})`);
+  
+  // STEP 5: Schedule daily technology reads generation
+  const techReadsCron = process.env.TECH_READS_CRON || '0 8 * * *'; // Default 8 AM UTC
+  cron.schedule(techReadsCron, async () => {
+    console.log('📖 Daily technology reads generation triggered at 8 AM');
+    try {
+      const result = await generateTechnologyReads({ force: true, reason: 'cron' });
+      console.log(`✅ Daily technology reads generated: ${result.reads.length} reads`);
+    } catch (error) {
+      console.error('❌ Error generating daily technology reads:', error.message);
+    }
+  }, {
+    scheduled: true,
+    timezone: process.env.TZ || 'UTC'
+  });
+  console.log(`📖 Daily technology reads scheduled: ${techReadsCron} (${process.env.TZ || 'UTC'})`);
+
+  // STEP 6: Schedule Daily Meta-Narrative Synthesis
+  const synthesisCron = process.env.SYNTHESIS_CRON || '0 9 * * *'; // 9 AM UTC
+  cron.schedule(synthesisCron, async () => {
+    console.log('🧠 Daily Meta-Narrative Synthesis triggered at 9 AM');
+    try {
+      await runDailySynthesis();
+      console.log('✅ Daily Synthesis complete');
+    } catch (error) {
+      console.error('❌ Error in Daily Synthesis:', error.message);
+    }
+  }, {
+    scheduled: true,
+    timezone: process.env.TZ || 'UTC'
+  });
+  console.log(`🧠 Daily Meta-Narrative Synthesis scheduled: ${synthesisCron} (${process.env.TZ || 'UTC'})`);
+  
+  // STEP 7: Warm-up tasks when server wakes up
+  setImmediate(async () => {
+    console.log('🔥 Running startup warm-up tasks...');
+    try {
+      console.log('📚 Refreshing papers on startup...');
+      await updatePapers();
+      console.log('✅ Papers refreshed on startup');
+    } catch (error) {
+      console.error('❌ Failed to refresh papers on startup:', error.message);
+    }
+    
+    try {
+      console.log('🧠 Generating daily technology reads on startup...');
+      const result = await generateTechnologyReads({ force: true, reason: 'startup' });
+      console.log(`✅ Startup technology reads ready (${result.reads.length} reads cached)`);
+    } catch (error) {
+      console.error('❌ Failed to generate technology reads on startup:', error.message);
+    }
+    
+    try {
+      console.log('📺 Checking channels for new videos on startup...');
       const enabledChannels = channelsConfig.channels.filter(c => c.enabled);
       if (enabledChannels.length > 0) {
-        console.log(`📺 Found ${enabledChannels.length} enabled channel(s), fetching videos in background...`);
         await checkAllChannelsForNewVideos();
-        console.log('✅ Background video fetching and processing complete');
+        console.log('✅ Startup video fetch complete');
       } else {
         console.log('⚠️ No enabled channels found. Skipping video fetch.');
       }
     } catch (error) {
       console.error('❌ Error fetching videos in background:', error.message);
       console.error(error.stack);
-      // Don't crash the server if video fetching fails
     }
+    console.log('🔥 Startup warm-up tasks finished');
   });
   
   // Handle server errors gracefully

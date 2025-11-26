@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Video, Play, ExternalLink, TrendingUp, Users, MessageSquare, ChevronDown, ChevronUp, Clock, Eye } from 'lucide-react';
 import { getChannelVideos, type VideoInsight } from '../services/api';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
 export default function VideoInsightsSection() {
   const [videos, setVideos] = useState<VideoInsight[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,7 +20,7 @@ export default function VideoInsightsSection() {
       setLoading(true);
       // Get first channel (for now, we'll use the Dwarkesh Patel channel)
       // In the future, we can make this configurable
-      const channelsResponse = await fetch('http://localhost:3001/api/channels');
+      const channelsResponse = await fetch(`${API_BASE_URL}/channels`);
       
       if (!channelsResponse.ok) {
         throw new Error(`Failed to fetch channels: ${channelsResponse.statusText}`);

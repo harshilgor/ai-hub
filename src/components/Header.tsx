@@ -15,7 +15,6 @@ export default function Header() {
           <div className="flex items-center justify-between">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2 text-xl font-bold">
-              <Brain className="w-7 h-7" />
               <span>Insider Info</span>
             </Link>
 
@@ -83,8 +82,7 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 text-xl font-bold">
-            <Brain className="w-7 h-7" />
-            <span>AI Hub</span>
+            <span>Insider Info</span>
           </Link>
           
           <nav className="flex items-center gap-6">

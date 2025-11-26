@@ -203,7 +203,11 @@ export async function fetchTechNewsFromGoogle(limit = 50, dateThreshold = null) 
         await new Promise(resolve => setTimeout(resolve, 1000));
         
       } catch (error) {
-        console.error(`Error fetching Google News for "${query}":`, error.message);
+        // Log as warning instead of error - transient rate limiting is expected
+        // Only log if it's not a rate limit or timeout error
+        if (!error.message.includes('rate') && !error.message.includes('timeout') && !error.message.includes('429')) {
+          console.warn(`⚠️ Google News fetch issue for "${query}": ${error.message}`);
+        }
         continue;
       }
     }

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Bookmark, Bell, Network, FileText, TrendingUp, Settings, Plus, CheckCircle, Clock, X } from 'lucide-react';
+import { Bookmark, Bell, FileText, TrendingUp, Settings, Plus, CheckCircle, Clock, X } from 'lucide-react';
 import { mockStartups, mockPapers, aiCategories } from '../data/mockData';
 
-type Tab = 'startups' | 'categories' | 'alerts' | 'graphs' | 'reading' | 'learning';
+type Tab = 'startups' | 'categories' | 'alerts' | 'reading' | 'learning';
 
 export default function MyTracker() {
   const [activeTab, setActiveTab] = useState<Tab>('startups');
@@ -12,7 +12,6 @@ export default function MyTracker() {
     { id: 'startups' as Tab, icon: Bookmark, label: 'Saved Startups' },
     { id: 'categories' as Tab, icon: TrendingUp, label: 'Followed Categories' },
     { id: 'alerts' as Tab, icon: Bell, label: 'My Alerts' },
-    { id: 'graphs' as Tab, icon: Network, label: 'Saved Graphs' },
     { id: 'reading' as Tab, icon: FileText, label: 'Reading List' },
     { id: 'learning' as Tab, icon: CheckCircle, label: 'Learning Path' },
   ];
@@ -93,7 +92,6 @@ export default function MyTracker() {
           {activeTab === 'startups' && <SavedStartups />}
           {activeTab === 'categories' && <FollowedCategories />}
           {activeTab === 'alerts' && <MyAlerts />}
-          {activeTab === 'graphs' && <SavedGraphs />}
           {activeTab === 'reading' && <ReadingList />}
           {activeTab === 'learning' && <LearningPath />}
         </motion.div>
@@ -275,46 +273,6 @@ function MyAlerts() {
   );
 }
 
-function SavedGraphs() {
-  const graphs = [
-    { id: '1', name: 'Multimodal AI Landscape', nodes: 23, date: '2 days ago' },
-    { id: '2', name: 'Healthcare AI Companies', nodes: 15, date: '1 week ago' },
-    { id: '3', name: 'OpenAI Ecosystem', nodes: 31, date: '2 weeks ago' },
-  ];
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Saved Graphs</h2>
-        <button className="flex items-center gap-2 px-4 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-lg hover:scale-105 transition-transform">
-          <Plus className="w-5 h-5" />
-          New Graph
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {graphs.map((graph) => (
-          <div
-            key={graph.id}
-            className="glass-card rounded-xl overflow-hidden border border-light-border dark:border-dark-border hover-lift cursor-pointer"
-          >
-            <div className="h-40 bg-gradient-to-br from-primary-light/20 via-insight-light/20 to-success-light/20 flex items-center justify-center">
-              <Network className="w-16 h-16 text-primary-light dark:text-primary-dark opacity-50" />
-            </div>
-            <div className="p-6">
-              <h3 className="font-bold mb-2">{graph.name}</h3>
-              <div className="flex items-center justify-between text-sm text-light-text-secondary dark:text-dark-text-secondary">
-                <span>{graph.nodes} nodes</span>
-                <span>{graph.date}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function ReadingList() {
   const papers = mockPapers.slice(0, 4);
   const [statuses, setStatuses] = useState<Record<string, 'to-read' | 'reading' | 'read'>>({
@@ -383,7 +341,6 @@ function LearningPath() {
     { id: '2', title: 'Explore OpenAI and Anthropic', type: 'Startups', completed: true },
     { id: '3', title: 'Multimodal AI Research Papers', type: 'Paper', completed: false, current: true },
     { id: '4', title: 'Vision-Language Models', type: 'Concept', completed: false },
-    { id: '5', title: 'Build Knowledge Graph', type: 'Activity', completed: false },
   ];
 
   return (

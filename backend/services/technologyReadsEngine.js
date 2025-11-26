@@ -470,7 +470,7 @@ function extractCompaniesFromSignals(evidence) {
     });
   });
   
-  evidence.patents.forEach(patent => {
+  (evidence.patents || []).forEach(patent => {
     if (patent.assignee && patent.assignee !== 'Unknown') {
       companies.add(patent.assignee);
     }

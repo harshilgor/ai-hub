@@ -660,10 +660,6 @@ export default function ResearchPapers() {
                         Download PDF
                       </a>
                     )}
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 glass-card border border-light-border dark:border-dark-border rounded-lg hover:opacity-90 transition-opacity text-xs whitespace-nowrap">
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      Add to Graph
-                    </button>
                     <div className="flex items-center gap-1.5 text-xs text-light-text-secondary dark:text-dark-text-secondary ml-auto">
                       <Eye className="w-3.5 h-3.5" />
                       <span>{paper.citations}</span>

@@ -1809,6 +1809,26 @@ export async function processYouTubeVideo(videoId, metadata = {}) {
     return null;
   }
   
+  // Generate deep breakdown (async, don't block main processing)
+  try {
+    const { generateVideoBreakdown } = await import('./videoBreakdownService.js');
+    generateVideoBreakdown(videoId, transcriptText, {
+      ...metadata,
+      title: metadata.title || metadata.episode,
+      channel: metadata.podcast,
+      duration: metadata.duration
+    }).then(breakdown => {
+      if (breakdown) {
+        result.breakdown = breakdown;
+        console.log(`✅ Generated deep breakdown for video ${videoId}`);
+      }
+    }).catch(err => {
+      console.error(`⚠️ Breakdown generation failed (non-blocking): ${err.message}`);
+    });
+  } catch (error) {
+    console.error(`⚠️ Could not import breakdown service: ${error.message}`);
+  }
+  
   console.log(`✅ Successfully processed video ${videoId}:`);
   console.log(`   Technologies: ${result.technologies.length}`);
   console.log(`   Companies: ${result.companies.length}`);

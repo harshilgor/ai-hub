@@ -31,7 +31,7 @@ export async function generateAITechnologyOverview(technology, techData, evidenc
         venue: p.venue
       })),
       companies: evidence.commercial.length,
-      patents: evidence.patents.length,
+      patents: (evidence.patents || []).length,
       keyInsights: keyInsights,
       opportunities: whatToBuild
     };
@@ -389,7 +389,7 @@ function generateTemplateOverview(technology, techData, evidence, keyInsights, w
   
   sections.push({
     heading: 'Commercial Landscape',
-    content: `The commercial ecosystem is rapidly developing with ${evidence.commercial.length} news articles and announcements covering this technology, including ${fundingCount} funding rounds indicating strong investor confidence. Additionally, ${evidence.patents.length} patents have been filed, showing that companies are actively protecting intellectual property and preparing for commercial deployment. This combination of research validation, investor interest, and IP protection suggests the technology is moving from research to real-world applications. Major technology companies, startups, and research institutions are all investing significant resources, creating a competitive but healthy ecosystem. The patent landscape shows active innovation across multiple application domains, suggesting broad commercial potential.`
+    content: `The commercial ecosystem is rapidly developing with ${evidence.commercial.length} news articles and announcements covering this technology, including ${fundingCount} funding rounds indicating strong investor confidence. This combination of research validation and investor interest suggests the technology is moving from research to real-world applications. Major technology companies, startups, and research institutions are all investing significant resources, creating a competitive but healthy ecosystem.`
   });
   
   // 5. Technical Deep Dive
@@ -437,7 +437,7 @@ function generateTemplateOverview(technology, techData, evidence, keyInsights, w
     });
   }
   
-  const summary = `${technology} is emerging as a critical technology with ${techData.count} research papers, ${techData.recentCount} published in the last 6 months (${Math.round(techData.growthRate)}% growth rate), and growing commercial interest from ${evidence.commercial.length} news articles and ${evidence.patents.length} patents. The field is experiencing rapid acceleration, with key breakthroughs in ${techData.categories.slice(0, 2).join(' and ')} applications.`;
+  const summary = `${technology} is emerging as a critical technology with ${techData.count} research papers, ${techData.recentCount} published in the last 6 months (${Math.round(techData.growthRate)}% growth rate), and growing commercial interest from ${evidence.commercial.length} news articles. The field is experiencing rapid acceleration, with key breakthroughs in ${techData.categories.slice(0, 2).join(' and ')} applications.`;
   
   return {
     summary,
@@ -471,7 +471,7 @@ function extractCompaniesFromEvidence(evidence) {
     });
   });
   
-  evidence.patents.forEach(patent => {
+  (evidence.patents || []).forEach(patent => {
     if (patent.assignee && patent.assignee !== 'Unknown') {
       companies.add(patent.assignee);
     }

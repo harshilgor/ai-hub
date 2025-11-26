@@ -84,10 +84,6 @@ export default function IndustryInsights() {
                 <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
                   {insight.date}
                 </span>
-                <button className="text-xs text-primary-light dark:text-primary-dark hover:underline flex items-center gap-1">
-                  View in Knowledge Graph
-                  <ArrowRight className="w-3 h-3" />
-                </button>
               </div>
             </motion.div>
           ))}

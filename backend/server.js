@@ -19,7 +19,6 @@ import {
   transformSemanticScholarPaper
 } from './services/semanticScholarService.js';
 import { fetchLatestTechNews } from './services/newsService.js';
-import { fetchLatestPatents } from './services/patentService.js';
 import { fetchLatestGithubActivity } from './services/githubService.js';
 import { aggregateAllSignals, extractTechnologiesFromSignals, extractIndustriesFromSignals } from './services/aggregationService.js';
 import {
@@ -1828,6 +1827,51 @@ app.get('/api/podcasts/:id', (req, res) => {
   }
   
   res.json(podcast);
+});
+
+/**
+ * GET /api/podcasts/:id/breakdown - Get detailed breakdown of a video/podcast
+ */
+app.get('/api/podcasts/:id/breakdown', async (req, res) => {
+  try {
+    const podcast = podcastsCache.find(p => p.id === req.params.id);
+    
+    if (!podcast) {
+      return res.status(404).json({ error: 'Podcast not found' });
+    }
+    
+    // Check if breakdown already exists in metadata
+    if (podcast.breakdown) {
+      return res.json(podcast.breakdown);
+    }
+    
+    // If breakdown doesn't exist, try to generate it
+    // This requires the transcript, which might not be cached
+    if (podcast.metadata?.transcript) {
+      const { generateVideoBreakdown } = await import('./services/videoBreakdownService.js');
+      const breakdown = await generateVideoBreakdown(
+        podcast.id,
+        podcast.metadata.transcript,
+        {
+          title: podcast.title,
+          channel: podcast.podcast,
+          duration: podcast.metadata?.duration
+        }
+      );
+      
+      if (breakdown) {
+        // Store breakdown in podcast metadata
+        if (!podcast.metadata) podcast.metadata = {};
+        podcast.breakdown = breakdown;
+        return res.json(breakdown);
+      }
+    }
+    
+    return res.status(404).json({ error: 'Breakdown not available. Transcript may not be stored.' });
+  } catch (error) {
+    console.error('Error fetching breakdown:', error);
+    res.status(500).json({ error: 'Failed to fetch breakdown', message: error.message });
+  }
 });
 
 /**

@@ -3,9 +3,7 @@
  */
 
 import { fetchLatestTechNews } from './newsService.js';
-import { fetchLatestPatents } from './patentService.js';
 import { fetchLatestGithubActivity } from './githubService.js';
-import { fetchJobPostings } from './jobPostingService.js';
 
 /**
  * Aggregate all signals for a technology
@@ -14,12 +12,10 @@ export async function aggregateSignalsForTechnology(technology, timeWindow = 30)
   const now = new Date();
   const dateThreshold = new Date(now.getTime() - timeWindow * 24 * 60 * 60 * 1000);
   
-  // Fetch from all sources in parallel
-  const [news, patents, github, jobs] = await Promise.allSettled([
+  // Fetch from all sources in parallel (removed patents and job postings)
+  const [news, github] = await Promise.allSettled([
     fetchLatestTechNews(100, dateThreshold),
-    fetchLatestPatents(50, dateThreshold),
-    fetchLatestGithubActivity(30, dateThreshold),
-    fetchJobPostings(50, dateThreshold)
+    fetchLatestGithubActivity(30, dateThreshold)
   ]);
   
   const allSignals = [];
@@ -31,23 +27,9 @@ export async function aggregateSignalsForTechnology(technology, timeWindow = 30)
     ));
   }
   
-  // Collect patent signals
-  if (patents.status === 'fulfilled') {
-    allSignals.push(...patents.value.filter(s => 
-      (s.technologies || []).includes(technology)
-    ));
-  }
-  
   // Collect GitHub signals
   if (github.status === 'fulfilled') {
     allSignals.push(...github.value.filter(s => 
-      (s.technologies || []).includes(technology)
-    ));
-  }
-  
-  // Collect job signals
-  if (jobs.status === 'fulfilled') {
-    allSignals.push(...jobs.value.filter(s => 
       (s.technologies || []).includes(technology)
     ));
   }
@@ -62,12 +44,10 @@ export async function aggregateAllSignals(timeWindow = 30) {
   const now = new Date();
   const dateThreshold = new Date(now.getTime() - timeWindow * 24 * 60 * 60 * 1000);
   
-  // Fetch from all sources
-  const [news, patents, github, jobs] = await Promise.allSettled([
+  // Fetch from all sources (removed patents and job postings)
+  const [news, github] = await Promise.allSettled([
     fetchLatestTechNews(100, dateThreshold),
-    fetchLatestPatents(50, dateThreshold),
-    fetchLatestGithubActivity(30, dateThreshold),
-    fetchJobPostings(50, dateThreshold)
+    fetchLatestGithubActivity(30, dateThreshold)
   ]);
   
   const allSignals = [];
@@ -76,16 +56,8 @@ export async function aggregateAllSignals(timeWindow = 30) {
     allSignals.push(...news.value);
   }
   
-  if (patents.status === 'fulfilled') {
-    allSignals.push(...patents.value);
-  }
-  
   if (github.status === 'fulfilled') {
     allSignals.push(...github.value);
-  }
-  
-  if (jobs.status === 'fulfilled') {
-    allSignals.push(...jobs.value);
   }
   
   return allSignals;

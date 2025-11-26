@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { FileText, Search, TrendingUp, Target, Network, Bookmark } from 'lucide-react';
+import { FileText, Search, TrendingUp, Target, Bookmark } from 'lucide-react';
 
 interface Feature {
   icon: React.ReactNode;
@@ -28,11 +28,6 @@ export default function FeaturesSection() {
       icon: <Target className="w-7 h-7" />,
       title: 'Industry Insights',
       description: 'Deep dive into specific sectors like healthcare, finance, robotics, and more with detailed analytics',
-    },
-    {
-      icon: <Network className="w-7 h-7" />,
-      title: 'Knowledge Graph',
-      description: 'Discover connections between research papers, startups, investors, and key technologies',
     },
     {
       icon: <Bookmark className="w-7 h-7" />,

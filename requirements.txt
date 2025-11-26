@@ -1,9 +1,0 @@
-pytubefix
-youtube-transcript-api
-pytube
-openai-whisper
-transformers
-torch
-spacy
-textblob
-

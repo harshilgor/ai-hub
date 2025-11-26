@@ -131,7 +131,36 @@ export const podcastsDB = {
       return null;
     }
     
-    return data || [];
+    // Parse metadata and breakdown JSON for all podcasts
+    if (data) {
+      return data.map(podcast => {
+        // Parse metadata
+        if (podcast.metadata) {
+          try {
+            podcast.metadata = typeof podcast.metadata === 'string' 
+              ? JSON.parse(podcast.metadata) 
+              : podcast.metadata;
+          } catch (e) {
+            console.error('Error parsing podcast metadata:', e);
+          }
+        }
+        
+        // Parse breakdown
+        if (podcast.breakdown) {
+          try {
+            podcast.breakdown = typeof podcast.breakdown === 'string' 
+              ? JSON.parse(podcast.breakdown) 
+              : podcast.breakdown;
+          } catch (e) {
+            console.error('Error parsing podcast breakdown:', e);
+          }
+        }
+        
+        return podcast;
+      });
+    }
+    
+    return [];
   },
   
   /**
@@ -140,12 +169,17 @@ export const podcastsDB = {
   async upsert(podcasts) {
     if (!supabase || !podcasts || podcasts.length === 0) return false;
     
-    // Convert metadata to JSON string for storage
+    // Convert metadata and breakdown to JSON for storage
     const podcastsToInsert = podcasts.map(podcast => ({
       ...podcast,
       metadata: typeof podcast.metadata === 'string' 
         ? podcast.metadata 
-        : JSON.stringify(podcast.metadata || {})
+        : JSON.stringify(podcast.metadata || {}),
+      breakdown: podcast.breakdown 
+        ? (typeof podcast.breakdown === 'string' 
+            ? podcast.breakdown 
+            : JSON.stringify(podcast.breakdown))
+        : null
     }));
     
     const { error } = await supabase
@@ -185,6 +219,17 @@ export const podcastsDB = {
           : data.metadata;
       } catch (e) {
         console.error('Error parsing podcast metadata:', e);
+      }
+    }
+    
+    // Parse breakdown JSON
+    if (data && data.breakdown) {
+      try {
+        data.breakdown = typeof data.breakdown === 'string' 
+          ? JSON.parse(data.breakdown) 
+          : data.breakdown;
+      } catch (e) {
+        console.error('Error parsing podcast breakdown:', e);
       }
     }
     

@@ -335,8 +335,8 @@ function findCrossConnections(evidence, technology) {
     }
   });
   
-  // Patent → Market: Patents that correlate with job postings or news
-  evidence.patents.forEach(patent => {
+  // Patent → Market: Patents that correlate with job postings or news (removed - patents no longer fetched)
+  (evidence.patents || []).forEach(patent => {
     const patentDate = new Date(patent.published || patent.updated || 0);
     
     const relatedJobs = evidence.jobs.filter(job => {
@@ -483,8 +483,8 @@ function extractCompanies(evidence) {
     });
   });
   
-  // Extract from patents (assignee)
-  evidence.patents.forEach(patent => {
+  // Extract from patents (assignee) - patents no longer fetched, kept for compatibility
+  (evidence.patents || []).forEach(patent => {
     if (patent.assignee && patent.assignee !== 'Unknown') {
       companies.add(patent.assignee);
     }

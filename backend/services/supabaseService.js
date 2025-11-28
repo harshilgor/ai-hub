@@ -288,12 +288,24 @@ export const channelsDB = {
     }
     
     // Parse processedVideoIds JSON
-    const channels = (data || []).map(channel => ({
-      ...channel,
-      processedVideoIds: typeof channel.processedVideoIds === 'string'
-        ? JSON.parse(channel.processedVideoIds || '[]')
-        : (channel.processedVideoIds || [])
-    }));
+    const channels = (data || []).map(channel => {
+      const processedVideoIds = typeof channel.processed_video_ids === 'string'
+        ? JSON.parse(channel.processed_video_ids || '[]')
+        : (channel.processed_video_ids || channel.processedVideoIds || []);
+
+      return {
+        id: channel.id,
+        channelId: channel.channel_id || channel.channelId,
+        name: channel.name,
+        enabled: channel.enabled,
+        lastChecked: channel.last_checked || channel.lastChecked,
+        lastVideoId: channel.last_video_id || channel.lastVideoId,
+        processedVideoIds,
+        autoProcess: channel.auto_process !== undefined ? channel.auto_process : channel.autoProcess,
+        maxVideosPerCheck: channel.max_videos_per_check || channel.maxVideosPerCheck || 5,
+        minVideoLength: channel.min_video_length || channel.minVideoLength || 300
+      };
+    });
     
     return channels;
   },
@@ -357,6 +369,85 @@ export const channelsDB = {
     }
     
     return data;
+  }
+};
+
+/**
+ * Cached Insights Storage
+ */
+export const insightsStorage = {
+  async saveTechnologyReads(reads, generatedAt = new Date().toISOString()) {
+    if (!supabase) return false;
+    const { error } = await supabase
+      .from('technology_reads_snapshots')
+      .insert({
+        reads: JSON.stringify(reads),
+        generated_at: generatedAt
+      });
+    if (error) {
+      console.error('Error saving technology reads snapshot:', error);
+      return false;
+    }
+    return true;
+  },
+
+  async loadLatestTechnologyReads() {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('technology_reads_snapshots')
+      .select('*')
+      .order('generated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error loading technology reads snapshot:', error);
+      return null;
+    }
+
+    if (!data) return null;
+
+    return {
+      reads: typeof data.reads === 'string' ? JSON.parse(data.reads) : data.reads,
+      generatedAt: data.generated_at
+    };
+  },
+
+  async saveTechnologyPredictions(predictions, generatedAt = new Date().toISOString()) {
+    if (!supabase) return false;
+    const { error } = await supabase
+      .from('technology_predictions_snapshots')
+      .insert({
+        predictions: JSON.stringify(predictions),
+        generated_at: generatedAt
+      });
+    if (error) {
+      console.error('Error saving technology predictions snapshot:', error);
+      return false;
+    }
+    return true;
+  },
+
+  async loadLatestTechnologyPredictions() {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('technology_predictions_snapshots')
+      .select('*')
+      .order('generated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error loading technology predictions snapshot:', error);
+      return null;
+    }
+
+    if (!data) return null;
+
+    return {
+      predictions: typeof data.predictions === 'string' ? JSON.parse(data.predictions) : data.predictions,
+      generatedAt: data.generated_at
+    };
   }
 };
 

@@ -52,7 +52,8 @@ import {
   isSupabaseConfigured,
   papersDB,
   podcastsDB,
-  channelsDB
+  channelsDB,
+  insightsStorage
 } from './services/supabaseService.js';
 
 dotenv.config();
@@ -104,10 +105,16 @@ let technologyReadsCache = {
   lastGenerated: null,
   dailyLimit: 20
 };
+let technologyPredictionsCache = {
+  predictions: [],
+  lastGenerated: null
+};
 
 // Database file paths
 const DB_PATH = path.join(__dirname, 'data', 'papers.json');
 const PODCASTS_DB_PATH = path.join(__dirname, 'data', 'podcasts.json');
+const TECHNOLOGY_READS_PATH = path.join(__dirname, 'data', 'technologyReads.json');
+const TECHNOLOGY_PREDICTIONS_PATH = path.join(__dirname, 'data', 'technologyPredictions.json');
 const CHANNELS_CONFIG_PATH = path.join(__dirname, 'data', 'channels.json');
 
 /**
@@ -395,6 +402,125 @@ async function saveChannelsConfig() {
   } catch (error) {
     console.error('❌ Error saving channels config:', error.message);
   }
+}
+
+/**
+ * Load technology reads snapshot from storage
+ */
+async function loadTechnologyReadsSnapshot() {
+  if (technologyReadsCache.reads.length > 0) return;
+
+  // Supabase first
+  if (isSupabaseConfigured()) {
+    try {
+      const snapshot = await insightsStorage.loadLatestTechnologyReads();
+      if (snapshot && snapshot.reads?.length > 0) {
+        technologyReadsCache.reads = snapshot.reads;
+        technologyReadsCache.lastGenerated = snapshot.generatedAt;
+        console.log(`📦 Loaded technology reads snapshot from Supabase (${technologyReadsCache.reads.length} reads)`);
+        return;
+      }
+    } catch (error) {
+      console.error('❌ Error loading technology reads snapshot from Supabase:', error.message);
+    }
+  }
+
+  // JSON fallback
+  try {
+    await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+    const data = await fs.readFile(TECHNOLOGY_READS_PATH, 'utf-8');
+    const parsed = JSON.parse(data);
+    technologyReadsCache.reads = parsed.reads || [];
+    technologyReadsCache.lastGenerated = parsed.lastGenerated || null;
+    console.log(`📦 Loaded technology reads snapshot from JSON (${technologyReadsCache.reads.length} reads)`);
+  } catch {
+    // No snapshot yet
+  }
+}
+
+async function saveTechnologyReadsSnapshot() {
+  if (technologyReadsCache.reads.length === 0) return;
+
+  // Supabase
+  if (isSupabaseConfigured()) {
+    await insightsStorage.saveTechnologyReads(
+      technologyReadsCache.reads,
+      technologyReadsCache.lastGenerated
+    );
+  }
+
+  // JSON fallback
+  try {
+    await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+    await fs.writeFile(
+      TECHNOLOGY_READS_PATH,
+      JSON.stringify({
+        reads: technologyReadsCache.reads,
+        lastGenerated: technologyReadsCache.lastGenerated
+      }, null, 2)
+    );
+  } catch (error) {
+    console.error('❌ Error saving technology reads snapshot:', error.message);
+  }
+}
+
+async function loadTechnologyPredictionsSnapshot() {
+  if (technologyPredictionsCache.predictions.length > 0) return;
+
+  if (isSupabaseConfigured()) {
+    try {
+      const snapshot = await insightsStorage.loadLatestTechnologyPredictions();
+      if (snapshot && snapshot.predictions?.length > 0) {
+        technologyPredictionsCache.predictions = snapshot.predictions;
+        technologyPredictionsCache.lastGenerated = snapshot.generatedAt;
+        console.log(`📦 Loaded technology predictions snapshot from Supabase (${technologyPredictionsCache.predictions.length} entries)`);
+        return;
+      }
+    } catch (error) {
+      console.error('❌ Error loading technology predictions snapshot from Supabase:', error.message);
+    }
+  }
+
+  try {
+    await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+    const data = await fs.readFile(TECHNOLOGY_PREDICTIONS_PATH, 'utf-8');
+    const parsed = JSON.parse(data);
+    technologyPredictionsCache.predictions = parsed.predictions || [];
+    technologyPredictionsCache.lastGenerated = parsed.lastGenerated || null;
+    console.log(`📦 Loaded technology predictions snapshot from JSON (${technologyPredictionsCache.predictions.length} entries)`);
+  } catch {
+    // ignore
+  }
+}
+
+async function saveTechnologyPredictionsSnapshot() {
+  if (technologyPredictionsCache.predictions.length === 0) return;
+
+  if (isSupabaseConfigured()) {
+    await insightsStorage.saveTechnologyPredictions(
+      technologyPredictionsCache.predictions,
+      technologyPredictionsCache.lastGenerated
+    );
+  }
+
+  try {
+    await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+    await fs.writeFile(
+      TECHNOLOGY_PREDICTIONS_PATH,
+      JSON.stringify({
+        predictions: technologyPredictionsCache.predictions,
+        lastGenerated: technologyPredictionsCache.lastGenerated
+      }, null, 2)
+    );
+  } catch (error) {
+    console.error('❌ Error saving technology predictions snapshot:', error.message);
+  }
+}
+
+function isCacheFresh(lastGenerated, maxHours = 12) {
+  if (!lastGenerated) return false;
+  const ageHours = (Date.now() - new Date(lastGenerated).getTime()) / (1000 * 60 * 60);
+  return ageHours < maxHours;
 }
 
 /**
@@ -1607,6 +1733,17 @@ app.get('/api/insights/emerging', async (req, res) => {
  */
 app.get('/api/insights/predictions', async (req, res) => {
   try {
+    const force = req.query.force === 'true';
+    await loadTechnologyPredictionsSnapshot();
+
+    if (!force && technologyPredictionsCache.predictions.length > 0 && isCacheFresh(technologyPredictionsCache.lastGenerated, 6)) {
+      return res.json({
+        predictions: technologyPredictionsCache.predictions,
+        lastUpdate: technologyPredictionsCache.lastGenerated,
+        cached: true
+      });
+    }
+
     const allSignals = await getAllSignals();
     
     // Extract technologies from signals
@@ -1636,11 +1773,17 @@ app.get('/api/insights/predictions', async (req, res) => {
     }
     
     // Use enhanced prediction with comprehensive insights
-    const predictions = predictNextBigTechnology(technologies, allSignals, papersCache);
+    const predictions = predictNextBigTechnology(technologies, allSignals, papersCache)
+      .slice(0, 10); // Top 10
+
+    technologyPredictionsCache.predictions = predictions;
+    technologyPredictionsCache.lastGenerated = new Date().toISOString();
+    await saveTechnologyPredictionsSnapshot();
     
     res.json({
-      predictions: predictions.slice(0, 10), // Top 10
-      lastUpdate: insightsCache.lastUpdate || new Date().toISOString()
+      predictions,
+      lastUpdate: technologyPredictionsCache.lastGenerated,
+      cached: false
     });
   } catch (error) {
     console.error('Error fetching predictions:', error);
@@ -2289,6 +2432,8 @@ app.post('/api/channels/:id/videos/process', async (req, res) => {
 });
 
 async function generateTechnologyReads({ force = false, reason = 'api' } = {}) {
+  await loadTechnologyReadsSnapshot();
+
   // Check cache freshness
   const now = new Date();
   const lastGenerated = technologyReadsCache.lastGenerated 
@@ -2402,6 +2547,7 @@ async function generateTechnologyReads({ force = false, reason = 'api' } = {}) {
     
     technologyReadsCache.reads = validReads;
     technologyReadsCache.lastGenerated = now.toISOString();
+    await saveTechnologyReadsSnapshot();
     
     return buildResponse(validReads, technologies.length);
   }
@@ -2427,6 +2573,7 @@ async function generateTechnologyReads({ force = false, reason = 'api' } = {}) {
   
   technologyReadsCache.reads = validReads;
   technologyReadsCache.lastGenerated = now.toISOString();
+  await saveTechnologyReadsSnapshot();
   
   console.log(`✅ Generated ${validReads.length} detailed technology reads (cached for today)`);
   
@@ -2628,6 +2775,8 @@ async function initialize() {
   
   // STEP 2: Load channels config (needed for video fetching)
   await loadChannelsConfig();
+  await loadTechnologyReadsSnapshot();
+  await loadTechnologyPredictionsSnapshot();
   
   // STEP 3: Start server
   const server = app.listen(PORT, () => {
